@@ -9,8 +9,8 @@ fi
 instance="$HUBMAP_INSTANCE"
 
 # What python version should be used?
-if [ -z "$HUBMAP_PYTHON_VERSION" ]; then
-    exit "The environment variable HUBMAP_PYTHON_VERSION is not set."
+if [ -z "$SENNET_PYTHON_VERSION" ]; then
+    exit "The environment variable SENNET_PYTHON_VERSION is not set."
 fi
 python_version="$HUBMAP_PYTHON_VERSION"
 
@@ -37,7 +37,7 @@ source source_platform_file.sh
 
 echo $HM_AF_METHOD $HM_AF_ENV_NAME
 if [ "${HM_AF_METHOD}" == 'conda' ] ; then
-    which conda || export PATH=/hive/users/hive/anaconda3/bin:$PATH
+    which conda || export PATH=/opt/anaconda3/bin:$PATH
     eval "$(conda shell.bash hook)"
 elif [ "${HM_AF_METHOD}" == 'module_conda' ] ; then
     source /etc/profile.d/modules.sh
