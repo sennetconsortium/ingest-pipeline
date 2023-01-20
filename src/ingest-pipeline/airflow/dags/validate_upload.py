@@ -208,9 +208,13 @@ with HMDAG(
     )
 
     (
-        t_start_instance >> t_sense_start_instance
-      )
-    t_create_tmpdir >> t_find_uuid >> t_run_validation >> t_send_status >> t_cleanup_tmpdir
-    (
-        t_stop_instance >> t_sense_stop_instance
+        t_start_instance
+        >> t_sense_start_instance
+        >> t_create_tmpdir
+        >> t_find_uuid
+        >> t_run_validation
+        >> t_send_status
+        >> t_cleanup_tmpdir
+        >> t_stop_instance
+        >> t_sense_stop_instance
       )
