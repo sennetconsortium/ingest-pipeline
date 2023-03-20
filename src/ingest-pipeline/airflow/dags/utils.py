@@ -40,7 +40,6 @@ from hubmap_commons.type_client import TypeClient
 
 import cwltool  # used to find its path
 
-
 airflow_conf.read(join(environ['AIRFLOW_HOME'], 'instance', 'app.cfg'))
 try:
     sys.path.append(airflow_conf.as_dict()['connections']['SRC_PATH']
@@ -49,7 +48,6 @@ try:
     sys.path.pop()
 except KeyError:
     ENDPOINTS = {}
-
 
 JSONType = Union[str, int, float, bool, None, Dict[str, Any], List[Any]]
 
@@ -209,6 +207,7 @@ class DummyFileMatcher(FileMatcher):
     Drop-in replacement for PipelineFileMatcher which allows everything and always
     provides empty descriptions and ontology terms.
     """
+
     def get_file_metadata(self, file_path: Path) -> ManifestMatch:
         return True, '', '', False
 
@@ -219,6 +218,7 @@ class HMDAG(DAG):
     Defaults are applied to the DAG itself, and to any Tasks added to
     the DAG.
     """
+
     def __init__(self, dag_id: str, **kwargs):
         """
         Provide "max_active_runs" from the lanes resource, if it is
@@ -244,7 +244,7 @@ class HMDAG(DAG):
             task.queue = res_queue
         super().add_task(task)
 
-        
+
 def find_pipeline_manifests(cwl_files: Iterable[Path]) -> List[Path]:
     """
     Constructs manifest paths from CWL files (strip '.cwl', append
@@ -466,7 +466,7 @@ def get_git_root_paths(file_list: Iterable[str]) -> Union[str, List[str]]:
 def get_git_provenance_dict(file_list: PathStrOrList) -> Mapping[str, str]:
     """
     Given a list of file paths, return a list of dicts of the form:
-    
+
       [{<file base name>:<file commit hash>}, ...]
     """
     if isinstance(file_list, (str, Path)):  # sadly, a str is an Iterable[str]
@@ -478,7 +478,7 @@ def get_git_provenance_dict(file_list: PathStrOrList) -> Mapping[str, str]:
 def get_git_provenance_list(file_list: Iterable[str]) -> List[Mapping[str, Any]]:
     """
     Given a list of file paths, return a list of dicts of the form:
-    
+
       [{'name':<file base name>, 'hash':<file commit hash>, 'origin':<file git origin>},...]
     """
     if isinstance(file_list, str):  # sadly, a str is an Iterable[str]
@@ -522,7 +522,7 @@ def _get_file_type(path: Path) -> str:
 def get_file_metadata(root_dir: str, matcher: FileMatcher) -> List[Mapping[str, Any]]:
     """
     Given a root directory, return a list of the form:
-    
+
       [
         {
           'rel_path': <relative path>,
@@ -534,7 +534,7 @@ def get_file_metadata(root_dir: str, matcher: FileMatcher) -> List[Mapping[str, 
         },
         ...
       ]
-    
+
     containing an entry for every file below the given root directory:
     """
     root_path = Path(root_dir)
@@ -639,7 +639,7 @@ def get_auth_tok(**kwargs) -> str:
 def pythonop_send_create_dataset(**kwargs) -> str:
     """
     Requests creation of a new dataset.  Returns dataset info via XCOM
-    
+
     Accepts the following via the caller's op_kwargs:
     'http_conn_id' : the http connection to be used
     'parent_dataset_uuid_callable' : called with **kwargs; returns uuid
@@ -655,7 +655,7 @@ def pythonop_send_create_dataset(**kwargs) -> str:
     or
       'dataset_types_callable' : called with **kwargs; returns the
                                  types list of the new dataset
-    
+
     Returns the following via XCOM:
     (no key) : data_directory_path for the new dataset
     'derived_dataset_uuid' : uuid for the created dataset
@@ -694,7 +694,7 @@ def pythonop_send_create_dataset(**kwargs) -> str:
         source_uuids = [source_uuids]
 
     dataset_name = kwargs['dataset_name_callable'](**kwargs)
-    
+
     try:
         response = HttpHook('GET', http_conn_id=http_conn_id).run(
             endpoint=f'entities/{source_uuids[0]}',
@@ -737,7 +737,7 @@ def pythonop_send_create_dataset(**kwargs) -> str:
                 raise ValueError(f'datasets response did not contain {elt}')
         uuid = response_json['uuid']
         group_uuid = response_json['group_uuid']
-        
+
         response = HttpHook('GET', http_conn_id=http_conn_id).run(
             endpoint=f'datasets/{uuid}/file-system-abs-path',
             headers=headers,
@@ -758,7 +758,7 @@ def pythonop_send_create_dataset(**kwargs) -> str:
             raise RuntimeError(f'authorization for {endpoint} was rejected?')
         else:
             raise RuntimeError(f'misc error {e} on {endpoint}')
-            
+
     kwargs['ti'].xcom_push(key='group_uuid', value=group_uuid)
     kwargs['ti'].xcom_push(key='derived_dataset_uuid', value=uuid)
     return abs_path
@@ -769,7 +769,7 @@ def pythonop_set_dataset_state(**kwargs) -> None:
     Sets the status of a dataset, to 'Processing' if no specific state
     is specified.  NOTE that this routine cannot change a dataset into
     or out of the Published state.
-    
+
     Accepts the following via the caller's op_kwargs:
     'dataset_uuid_callable' : called with **kwargs; returns the
                               uuid of the dataset to be modified
@@ -851,7 +851,7 @@ def pythonop_get_dataset_state(**kwargs) -> JSONType:
     headers = {
         'authorization': f'Bearer {auth_tok}',
         'content-type': 'application/json',
-        'X-Hubmap-Application': 'ingest-pipeline',
+        'X-SenNet-Application': 'ingest-pipeline',
         }
     http_hook = HttpHook(method, http_conn_id='entity_api_connection')
 
@@ -939,7 +939,7 @@ def pythonop_get_dataset_state(**kwargs) -> JSONType:
             else:
                 print('benign error')
                 return {}
-        
+
     return rslt
 
 
@@ -948,8 +948,8 @@ def _uuid_lookup(uuid, **kwargs):
     endpoint = 'hmuuid/{}'.format(uuid)
     method = 'GET'
     headers = {'authorization': 'Bearer ' + get_auth_tok(**kwargs)}
-#     print('headers:')
-#     pprint(headers)
+    #     print('headers:')
+    #     pprint(headers)
     extra_options = {}
 
     http_hook = HttpHook(method,
@@ -959,8 +959,8 @@ def _uuid_lookup(uuid, **kwargs):
                              None,
                              headers,
                              extra_options)
-#     print('response: ')
-#     pprint(response.json())
+    #     print('response: ')
+    #     pprint(response.json())
     return response.json()
 
 
@@ -970,7 +970,7 @@ def _generate_slices(id: str) -> Iterable[str]:
         base, lidx, hidx = mo.groups()
         lidx = int(lidx)
         hidx = int(hidx)
-        for idx in range(lidx, hidx+1):
+        for idx in range(lidx, hidx + 1):
             yield f'{base}-{idx}'
     else:
         yield id
@@ -981,7 +981,7 @@ def assert_id_known(id: str, **kwargs) -> None:
     Is the given id string known to the uuid database?  Id strings with suffixes like
     myidstr-n1_n2 where n1 and n2 are integers are interpreted as representing multiple
     ids with suffix integers in the range n1 to n2 inclusive.
-    
+
     Raises AssertionError if the ID is not known.
     """
     for slice in _generate_slices(id):
@@ -998,13 +998,13 @@ def pythonop_md_consistency_tests(**kwargs) -> int:
     if exists(md_path):
         with open(md_path, 'r') as f:
             md = yaml.safe_load(f)
-    #     print('metadata from {} follows:'.format(md_path))
-    #     pprint(md)
+        #     print('metadata from {} follows:'.format(md_path))
+        #     pprint(md)
         if '_from_metadatatsv' in md and md['_from_metadatatsv']:
             try:
                 for elt in ['tissue_id', 'donor_id']:
                     assert elt in md, 'metadata is missing {}'.format(elt)
-                assert md['tissue_id'].startswith(md['donor_id']+'-'), 'tissue_id does not match'
+                assert md['tissue_id'].startswith(md['donor_id'] + '-'), 'tissue_id does not match'
                 assert_id_known(md['tissue_id'], **kwargs)
                 return 0
             except AssertionError as e:
@@ -1017,7 +1017,7 @@ def pythonop_md_consistency_tests(**kwargs) -> int:
         kwargs['ti'].xcom_push(key='err_msg',
                                value='Expected metadata file is missing')
         return 1
-        
+
 
 def _get_scratch_base_path() -> Path:
     dct = airflow_conf.as_dict(display_sensitive=True)['connections']
@@ -1106,14 +1106,14 @@ def make_send_status_msg_function_old(
     'dataset_uuid_fun' is a function which returns the uuid of the dataset to be
     updated, or None.  If given, it will be called with **kwargs arguments.
 
-    'dataset_lz_path_fun' is a function which returns the full path of the dataset 
+    'dataset_lz_path_fun' is a function which returns the full path of the dataset
     data directory, or None.  If given, it will be called with **kwargs arguments.
     If the return value of this callable is None or the empty string, no file metadata
     will be ultimately be included in the status message.
 
-    'uuid_src_task_id' is the Airflow task_id of a task providing the uuid via 
+    'uuid_src_task_id' is the Airflow task_id of a task providing the uuid via
     the XCOM key 'derived_dataset_uuid' and the dataset data directory
-    via the None key.  This is used only if dataset_uuid is None or dataset_lz_path 
+    via the None key.  This is used only if dataset_uuid is None or dataset_lz_path
     is None.
 
     'metadata_fun' is a function which returns additional metadata in JSON form,
@@ -1172,7 +1172,7 @@ def make_send_status_msg_function_old(
 
             if metadata_fun:
                 md['metadata'] = metadata_fun(**kwargs)
-                
+
             if dataset_lz_path_fun:
                 dataset_dir_abs_path = dataset_lz_path_fun(**kwargs)
                 if dataset_dir_abs_path:
@@ -1326,7 +1326,7 @@ def make_send_status_msg_function(
         headers = {
             'authorization': 'Bearer ' + get_auth_tok(**kwargs),
             'content-type': 'application/json',
-            'X-Hubmap-Application': 'ingest-pipeline',
+            'X-SenNet-Application': 'ingest-pipeline',
         }
         extra_options = {}
         return_status = True  # mark false on failure
@@ -1574,12 +1574,12 @@ def _lookup_resource_record(dag_id: str,
         raise ValueError('No resource map entry found for'
                          f' dag_id <{dag_id}> task_id <{task_id}>')
 
-    
+
 def get_queue_resource(dag_id: str, task_id: Optional[str] = None) -> str:
     """
     Look up the queue defined for this dag_id and task_id in the current
-    resource map.  If the task_id is None, the lookup is done with 
-    task_id='__default__', which presumably only matches the wildcard case.  
+    resource map.  If the task_id is None, the lookup is done with
+    task_id='__default__', which presumably only matches the wildcard case.
     """
     if task_id is None:
         task_id = '__default__'
@@ -1614,7 +1614,7 @@ def get_threads_resource(dag_id: str, task_id: Optional[str] = None) -> int:
     Look up the number of threads defined for this dag_id and task_id in
     the current resource map.  If the task_id is None, the lookup is done
     with task_id='__default__', which presumably only matches the wildcard
-    case.  
+    case.
     """
     if task_id is None:
         task_id = '__default__'
@@ -1713,7 +1713,7 @@ def find_matching_endpoint(host_url: str) -> str:
     """
     Find the identity of the 'instance' of Airflow infrastructure based
     on environment information.
-    
+
     host_url: the URL of entity-api in the current context
 
     returns: an instance string, for example 'PROD' or 'DEV'
@@ -1732,7 +1732,7 @@ def main():
     This provides some unit tests.  To run it, you will need to define the
     'search_api_connection' connection ID and the Fernet key.  The easiest way
     to do that is with something like:
-    
+
       export AIRFLOW_CONN_SEARCH_API_CONNECTION='https://search.api.hubmapconsortium.org/v3/
       fernet_key=`python -c 'from cryptography.fernet import Fernet ; print(Fernet.generate_key().decode())'`
       export AIRFLOW__CORE__FERNET_KEY=${fernet_key}
