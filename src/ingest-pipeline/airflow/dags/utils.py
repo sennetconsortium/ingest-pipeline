@@ -838,7 +838,7 @@ def pythonop_get_dataset_state(**kwargs) -> JSONType:
     """
     Gets the status JSON structure for a dataset.  Works for Uploads
     and Publications as well as Datasets.
-    
+
     Accepts the following via the caller's op_kwargs:
     'dataset_uuid_callable' : called with **kwargs; returns the
                               uuid of the Dataset or Upload to be examined
