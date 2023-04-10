@@ -26,6 +26,7 @@ from utils import (
     get_preserve_scratch_resource,
     pythonop_maybe_keep,
     pythonop_get_dataset_state,
+    get_threads_resource,
     get_instance_type,
     )
 
@@ -147,7 +148,8 @@ with HMDAG('scan_and_begin_processing',
             plugin_directory=plugin_path,
             # offline=True,  # noqa E265
             add_notes=False,
-            ignore_deprecation=True
+            ignore_deprecation=True,
+            extra_parameters={'coreuse': get_threads_resource('validate_upload', 'run_validation')}
         )
         # Scan reports an error result
         errors = upload.get_errors(plugin_kwargs=kwargs)
