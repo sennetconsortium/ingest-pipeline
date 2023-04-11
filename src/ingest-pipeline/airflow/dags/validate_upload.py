@@ -5,9 +5,6 @@ from pathlib import Path
 from datetime import datetime, timedelta
 from pprint import pprint
 
-from airflow.providers.amazon.aws.operators.ec2 import EC2StartInstanceOperator, EC2StopInstanceOperator
-from airflow.providers.amazon.aws.sensors.ec2 import EC2InstanceStateSensor
-
 from airflow.configuration import conf as airflow_conf
 from airflow.operators.python import PythonOperator
 from airflow.exceptions import AirflowException
@@ -28,6 +25,12 @@ from utils import (
     get_queue_resource,
     get_preserve_scratch_resource,
     get_threads_resource,
+    get_instance_type,
+    )
+
+from aws_utils import (
+    create_instance,
+    terminate_instance
 )
 
 sys.path.append(airflow_conf.as_dict()["connections"]["SRC_PATH"].strip("'").strip('"'))
@@ -56,26 +59,31 @@ default_args = {
     "queue": get_queue_resource("validate_upload"),
 }
 
-with HMDAG(
-    "validate_upload",
-    schedule_interval=None,
-    is_paused_upon_creation=False,
-    default_args=default_args,
-    user_defined_macros={
-        "tmp_dir_path": get_tmp_dir_path,
-        "preserve_scratch": get_preserve_scratch_resource("validate_upload"),
-    },
-) as dag:
-    t_start_instance = EC2StartInstanceOperator(
-        task_id="start_instance",
-        instance_id="i-007bbde390bf07819",
-        region_name="us-east-1"
-    )
+with HMDAG("validate_upload",
+           schedule_interval=None,
+           is_paused_upon_creation=False,
+           default_args=default_args,
+           user_defined_macros={
+               "tmp_dir_path": get_tmp_dir_path,
+               "preserve_scratch": get_preserve_scratch_resource("validate_upload"),
+           }) as dag:
 
-    t_sense_start_instance = EC2InstanceStateSensor(
-        task_id="await_start_instance",
-        instance_id="i-007bbde390bf07819",
-        target_state="running"
+    def start_new_environment(**kwargs):
+        uuid = kwargs["dag_run"].conf["submission_id"]
+        instance_id = create_instance(uuid, "Airflow Worker", get_instance_type(kwargs.get("dag_id")))
+        if instance_id is None:
+            return 1
+        else:
+            kwargs["ti"].xcom_push(key="instance_id", value=instance_id)
+            return 0
+
+
+    t_initialize_environment = PythonOperator(
+        task_id="initialize_environment",
+        python_callable=start_new_environment,
+        provide_context=True,
+        op_kwargs={
+        }
     )
 
     def find_uuid(**kwargs):
@@ -193,28 +201,34 @@ with HMDAG(
         provide_context=True,
     )
 
+
+    def terminate_new_environment(**kwargs):
+        instance_id = kwargs["ti"].xcom_pull(key="instance_id", task_ids="initialize_environment")
+        if instance_id is None:
+            return 1
+        else:
+            uuid = kwargs["dag_run"].conf["submission_id"]
+            terminate_instance(instance_id, uuid)
+        return 0
+
+
+    t_terminate_environment = PythonOperator(
+        task_id="terminate_environment",
+        python_callable=terminate_new_environment,
+        provide_context=True,
+        op_kwargs={
+        }
+    )
+
     t_create_tmpdir = CreateTmpDirOperator(task_id="create_temp_dir")
     t_cleanup_tmpdir = CleanupTmpDirOperator(task_id="cleanup_temp_dir")
-    t_stop_instance = EC2StopInstanceOperator(
-        task_id="stop_instance",
-        instance_id="i-007bbde390bf07819",
-        region_name="us-east-1"
-    )
-
-    t_sense_stop_instance = EC2InstanceStateSensor(
-        task_id="await_stop_instance",
-        instance_id="i-007bbde390bf07819",
-        target_state="stopped"
-    )
 
     (
-        t_start_instance
-        >> t_sense_start_instance
+        t_initialize_environment
         >> t_create_tmpdir
         >> t_find_uuid
         >> t_run_validation
         >> t_send_status
         >> t_cleanup_tmpdir
-        >> t_stop_instance
-        >> t_sense_stop_instance
+        >> t_terminate_environment
       )

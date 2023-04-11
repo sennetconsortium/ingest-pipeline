@@ -5,6 +5,7 @@ resource_map:
   - 'dag_re': 'test_workflow'
     'preserve_scratch': false
     'lanes': 1
+    'instance_type': 't3a.micro'
     'tasks':
     - 'task_re': '.*'
       'queue': 'general'
@@ -19,6 +20,7 @@ resource_map:
   - 'dag_re': 'celldive_deepcell'
     'preserve_scratch': true
     'lanes': 2
+    'instance_type': 'm5zn.3xlarge'
     'tasks':
     - 'task_re': '.*segmentation'
       'queue': 'gpu000_q1'
@@ -40,6 +42,7 @@ resource_map:
     'preserve_scratch': true
     'lanes': 2
     # 'lanes': 12
+    'instance_type': 'm5zn.3xlarge'
     'tasks':
     - 'task_re': '.*cwl.*|.*exec|.*cmd.*|.*azimuth.*|.*ui.*'
       'queue': 'processing'
@@ -50,6 +53,7 @@ resource_map:
   - 'dag_re': 'generate_bdbag'
     'preserve_scratch': true
     'lanes': 1
+    'instance_type': 't3a.xlarge'
     'tasks':
     - 'task_re': '.*'
       'queue': 'general'
@@ -57,6 +61,7 @@ resource_map:
   - 'dag_re': 'generate_usage_report'
     'preserve_scratch': true
     'lanes': 1
+    'instance_type': 't3a.xlarge'
     'tasks':
     - 'task_re': '.*'
       'queue': 'general'
@@ -65,6 +70,7 @@ resource_map:
     'preserve_scratch': true
     'lanes': 2
     # 'lanes': 6
+    'instance_type': 'm5zn.3xlarge'
     'tasks':
     - 'task_re': '.*cwl_cytokit'
       'queue': 'gpu000_q1'
@@ -96,6 +102,7 @@ resource_map:
     'preserve_scratch': true
     'lanes': 2
     # 'lanes': 6
+    'instance_type': 'm5zn.xlarge'
     'tasks':
     - 'task_re': '.*'
       'queue': 'general'
@@ -103,6 +110,7 @@ resource_map:
   - 'dag_re': 'launch_checksums'
     'preserve_scratch': true
     'lanes': 2
+    'instance_type': 't3a.small'
     'tasks':
     - 'task_re': '.*'
       'queue': 'general'
@@ -110,6 +118,7 @@ resource_map:
   - 'dag_re': 'scan_and_begin_processing'
     'preserve_scratch': true
     'lanes': 2
+    'instance_type': 'c6a.xlarge'
     'tasks':
     - 'task_re': 'run_validation'
       'queue': 'validate'
@@ -120,6 +129,7 @@ resource_map:
   - 'dag_re': 'validate_upload'
     'preserve_scratch': true
     'lanes': 2
+    'instance_type': 'c6a.xlarge'
     'tasks':
     - 'task_re': 'run_validation'
       'queue': 'validate'
@@ -130,6 +140,7 @@ resource_map:
   - 'dag_re': 'validation_test'
     'preserve_scratch': true
     'lanes': 2
+    'instance_type': 't3a.micro'
     'tasks':
     - 'task_re': 'run_validation'
       'queue': 'validate'
@@ -141,6 +152,7 @@ resource_map:
     'preserve_scratch': true
     'lanes': 8
     # 'lanes': 11
+    'instance_type': 'm5zn.xlarge'
     'tasks':
     - 'task_re': '.*'
       'queue': 'general'
@@ -148,6 +160,7 @@ resource_map:
   - 'dag_re': '.*'
     'preserve_scratch': true
     'lanes': 2
+    'instance_type': 'c6a.medium'
     'tasks':
       - 'task_re': '.*'
         'queue': 'general'
