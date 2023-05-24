@@ -20,7 +20,7 @@ resource_map:
   - 'dag_re': 'celldive_deepcell'
     'preserve_scratch': true
     'lanes': 2
-    'instance_type': 'r5.xlarge'
+    'instance_type': 'r6i.xlarge'
     'tasks':
     - 'task_re': '.*segmentation'
       'queue': 'gpu000_q1'
@@ -42,7 +42,7 @@ resource_map:
     'preserve_scratch': true
     'lanes': 2
     # 'lanes': 12
-    'instance_type': 'r5.xlarge'
+    'instance_type': 'r6i.xlarge'
     'tasks':
     - 'task_re': '.*cwl.*|.*exec|.*cmd.*|.*azimuth.*|.*ui.*'
       'queue': 'processing'
@@ -70,7 +70,7 @@ resource_map:
     'preserve_scratch': true
     'lanes': 2
     # 'lanes': 6
-    'instance_type': 'r5.4xlarge'
+    'instance_type': 'r6i.8xlarge'
     'tasks':
     - 'task_re': '^(?!maybe_keep)(.*cwl_cytokit)'
       'queue': 'gpu000_q1'
@@ -109,7 +109,7 @@ resource_map:
     'preserve_scratch': true
     'lanes': 2
     # 'lanes': 6
-    'instance_type': 'r5.xlarge'
+    'instance_type': 'r6i.xlarge'
     'tasks':
     - 'task_re': '.*'
       'queue': 'general'
@@ -159,7 +159,7 @@ resource_map:
     'preserve_scratch': true
     'lanes': 8
     # 'lanes': 11
-    'instance_type': 'r5.xlarge'
+    'instance_type': 'r6i.xlarge'
     'tasks':
     - 'task_re': '.*'
       'queue': 'general'
@@ -167,7 +167,7 @@ resource_map:
   - 'dag_re': '.*'
     'preserve_scratch': true
     'lanes': 2
-    'instance_type': 'c6a.medium'
+    'instance_type': 't3a.medium'
     'tasks':
       - 'task_re': '.*'
         'queue': 'general'
