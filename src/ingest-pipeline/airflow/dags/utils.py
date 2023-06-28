@@ -1131,6 +1131,7 @@ def make_send_status_msg_function_old(
     no file metadata will be included.  Note that file metadata may also be excluded
     based on the return value of 'dataset_lz_path_fun' above.
     """
+
     def send_status_msg(**kwargs) -> bool:
         retcodes = [
             kwargs['ti'].xcom_pull(task_ids=op)

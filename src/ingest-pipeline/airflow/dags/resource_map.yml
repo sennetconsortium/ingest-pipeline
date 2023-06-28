@@ -26,11 +26,12 @@ resource_map:
       'queue': 'gpu000_q1'
       'threads': 6
     - 'task_re': '.*'
-      'queue': 'general'
+      'queue': 'processing'
       'threads': 6
   - 'dag_re': 'mibi_deepcell'
     'preserve_scratch': true
     'lanes': 2
+    'instance_type': 'r6i.xlarge'
     'tasks':
       - 'task_re': '.*segmentation'
         'queue': 'gpu000_q1'

@@ -197,6 +197,7 @@ with HMDAG("validate_upload",
         print("response: ")
         pprint(response.json())
 
+
     t_send_status = PythonOperator(
         task_id="send_status",
         python_callable=send_status_msg,
