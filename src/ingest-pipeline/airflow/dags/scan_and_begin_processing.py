@@ -2,6 +2,7 @@ import sys
 import os
 from pprint import pprint
 
+import requests
 import yaml
 from pathlib import Path
 from datetime import datetime, timedelta
@@ -53,6 +54,9 @@ def get_dataset_lz_path(**kwargs):
     ctx = kwargs['dag_run'].conf
     return ctx['lz_path']
 
+validation_queue = ''
+default_queue = ''
+
 
 # Following are defaults which can be overridden later on
 default_args = {
@@ -70,14 +74,14 @@ default_args = {
 }
 
 
-with HMDAG('scan_and_begin_processing', 
+with (HMDAG('scan_and_begin_processing',
            schedule_interval=None, 
            is_paused_upon_creation=False, 
            default_args=default_args,
            user_defined_macros={
                'tmp_dir_path': utils.get_tmp_dir_path,
                'preserve_scratch': get_preserve_scratch_resource('scan_and_begin_processing')
-           }) as dag:
+           }) as dag):
 
     def start_new_environment(**kwargs):
         uuid = kwargs['dag_run'].conf['submission_id']
@@ -96,6 +100,30 @@ with HMDAG('scan_and_begin_processing',
         provide_context=True,
         op_kwargs={
         }
+    )
+
+
+    def reset_queue(**kwargs):
+        url = 'http://172.31.28.146:5556/api/worker/queue/add-consumer/celery-dev@base.cpunode.172.31.20.250'
+        global default_queue
+        default_queue = get_queue_resource('scan_and_begin_processing') + kwargs['dag_run'].confg['submission_id']
+        res = requests.post(url=url, data={'queue': default_queue})
+        if res.status_code > 200:
+            return 1
+        else:
+            global validation_queue
+            validation_queue = get_queue_resource('scan_and_begin_processing', 'run_validation') \
+                    + kwargs['dag_run'].confg['submission_id']
+            res = requests.post(url=url, data={'queue': validation_queue})
+            if res.status_code > 200:
+                return 1
+            else:
+                return 0
+
+    t_reset_queue = PythonOperator(
+        task_id='reset_queue',
+        python_callable=reset_queue,
+        provide_context=True,
     )
 
     def read_metadata_file(**kwargs):
@@ -170,6 +198,7 @@ with HMDAG('scan_and_begin_processing',
         task_id='run_validation',
         python_callable=run_validation,
         provide_context=True,
+        queue=validation_queue,
         op_kwargs={
         }
     )
@@ -205,6 +234,7 @@ with HMDAG('scan_and_begin_processing',
         task_id='maybe_continue',
         python_callable=pythonop_maybe_keep,
         provide_context=True,
+        queue=default_queue,
         op_kwargs={
             'next_op': 'run_md_extract',
             'bail_op': 'send_status_msg',
@@ -214,6 +244,7 @@ with HMDAG('scan_and_begin_processing',
 
     t_run_md_extract = BashOperator(
         task_id='run_md_extract',
+        queue=default_queue,
         bash_command=""" \
         lz_dir="{{dag_run.conf.lz_path}}" ; \
         src_dir="{{dag_run.conf.src_path}}/md" ; \
@@ -235,6 +266,7 @@ with HMDAG('scan_and_begin_processing',
         task_id='md_consistency_tests',
         python_callable=utils.pythonop_md_consistency_tests,
         provide_context=True,
+        queue=default_queue,
         op_kwargs={'metadata_fname': 'rslt.yml'}
         )
 
@@ -242,11 +274,12 @@ with HMDAG('scan_and_begin_processing',
         task_id='send_status_msg',
         python_callable=wrapped_send_status_msg,
         provide_context=True,
+        queue=default_queue,
         trigger_rule='all_done'
     )
 
-    t_create_tmpdir = CreateTmpDirOperator(task_id='create_temp_dir')
-    t_cleanup_tmpdir = CleanupTmpDirOperator(task_id='cleanup_temp_dir')
+    t_create_tmpdir = CreateTmpDirOperator(task_id='create_temp_dir', queue=default_queue,)
+    t_cleanup_tmpdir = CleanupTmpDirOperator(task_id='cleanup_temp_dir', queue=default_queue,)
 
     def flex_maybe_spawn(**kwargs):
         """
@@ -288,7 +321,8 @@ with HMDAG('scan_and_begin_processing',
     t_maybe_spawn = FlexMultiDagRunOperator(
         task_id='flex_maybe_spawn',
         provide_context=True,
-        python_callable=flex_maybe_spawn
+        python_callable=flex_maybe_spawn,
+        queue=default_queue,
         )
 
 
@@ -311,6 +345,7 @@ with HMDAG('scan_and_begin_processing',
 
     (
         t_initialize_environment
+        >> t_reset_queue
         >> t_create_tmpdir
         >> t_run_validation
         >> t_maybe_continue
