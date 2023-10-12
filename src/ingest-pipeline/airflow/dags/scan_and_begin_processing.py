@@ -17,6 +17,7 @@ from hubmap_operators.flex_multi_dag_run import FlexMultiDagRunOperator
 from hubmap_operators.common_operators import (
     CreateTmpDirOperator,
     CleanupTmpDirOperator,
+    DynamicPythonOperator,
 )
 
 import utils
@@ -204,7 +205,7 @@ with HMDAG('scan_and_begin_processing',
         else:
             return 0
 
-    t_run_validation = PythonOperator(
+    t_run_validation = DynamicPythonOperator(
         task_id='run_validation',
         python_callable=run_validation,
         provide_context=True,

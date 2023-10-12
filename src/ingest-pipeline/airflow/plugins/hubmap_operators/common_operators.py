@@ -25,6 +25,13 @@ class LogInfoOperator(PythonOperator):
         super().__init__(python_callable=pythonop_trigger_target,
                          provide_context=True,
                          **kwargs)
+
+
+class DynamicPythonOperator(PythonOperator):
+    def __init__(self, **kwargs):
+        queue = kwargs["queue"]
+        print(f'The Queue {queue}')
+        super().__init__(**kwargs)
     
 
 class JoinOperator(DummyOperator):
