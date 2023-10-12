@@ -74,23 +74,24 @@ default_args = {
 }
 
 
-with (HMDAG('scan_and_begin_processing',
+with HMDAG('scan_and_begin_processing',
            schedule_interval=None, 
            is_paused_upon_creation=False, 
            default_args=default_args,
            user_defined_macros={
                'tmp_dir_path': utils.get_tmp_dir_path,
                'preserve_scratch': get_preserve_scratch_resource('scan_and_begin_processing')
-           }) as dag):
+           }) as dag:
 
     def start_new_environment(**kwargs):
         uuid = kwargs['dag_run'].conf['submission_id']
-        instance_id = create_instance(uuid, f'Airflow {get_environment_instance()} Worker',
-                                      get_instance_type(kwargs['dag_run'].conf['dag_id']))
+        instance_id, instance_ip = create_instance(uuid, f'Airflow {get_environment_instance()} Worker',
+                                                   get_instance_type(kwargs['dag_run'].conf['dag_id']))
         if instance_id is None:
             return 1
         else:
             kwargs['ti'].xcom_push(key='instance_id', value=instance_id)
+            kwargs['ti'].xcom_push(key='instance_ip', value=instance_ip)
             return 0
 
 
@@ -104,7 +105,8 @@ with (HMDAG('scan_and_begin_processing',
 
 
     def reset_queue(**kwargs):
-        url = 'http://172.31.28.146:5556/api/worker/queue/add-consumer/celery-dev@base.cpunode.172.31.20.250'
+        instance_ip = kwargs['ti'].xcom_pull(key='instance_ip', task_ids="initialize_environment")
+        url = 'http://172.31.28.146:5556/api/worker/queue/add-consumer/celery-dev@base.cpunode.' + instance_ip
         global default_queue
         default_queue = get_queue_resource('scan_and_begin_processing') + kwargs['dag_run'].confg['submission_id']
         res = requests.post(url=url, data={'queue': default_queue})
@@ -113,7 +115,7 @@ with (HMDAG('scan_and_begin_processing',
         else:
             global validation_queue
             validation_queue = get_queue_resource('scan_and_begin_processing', 'run_validation') \
-                    + kwargs['dag_run'].confg['submission_id']
+                               + kwargs['dag_run'].confg['submission_id']
             res = requests.post(url=url, data={'queue': validation_queue})
             if res.status_code > 200:
                 return 1

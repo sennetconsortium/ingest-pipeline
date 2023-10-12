@@ -37,7 +37,7 @@ def create_instance(instance_name: str, instance_prefix: str, instance_type: str
     client = AwsBaseHook(client_type="ec2").get_conn()
 
     # Create the instance
-    instance_id = client.run_instances(
+    instance = client.run_instances(
         ImageId=_get_latest_ami_id(instance_prefix),
         MinCount=1,
         MaxCount=1,
@@ -48,13 +48,15 @@ def create_instance(instance_name: str, instance_prefix: str, instance_type: str
         # https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/configuring-instance-metadata-service.html
         MetadataOptions={"HttpEndpoint": "enabled", "HttpTokens": "required"},
         SecurityGroupIds=['sg-0907a55bc38412a01'],
-    )["Instances"][0]["InstanceId"]
+    )
+    instance_id = instance["Instances"][0]["InstanceId"]
+    instance_ip = instance["Instances"][0]["NetworkInterface"][0]["PrivateIpAddress"]
 
     # Wait for it to exist
     waiter = client.get_waiter("instance_status_ok")
     waiter.wait(InstanceIds=[instance_id])
 
-    return instance_id
+    return instance_id, instance_ip
 
 
 def terminate_instance(instance: str, instance_name: str):
