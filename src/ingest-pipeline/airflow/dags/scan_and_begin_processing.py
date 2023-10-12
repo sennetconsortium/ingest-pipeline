@@ -8,6 +8,7 @@ from pathlib import Path
 from datetime import datetime, timedelta
 
 from airflow.configuration import conf as airflow_conf
+from airflow.models.xcom import LazyXComAccess
 from airflow.operators.bash import BashOperator
 from airflow.operators.python import PythonOperator, BranchPythonOperator
 from airflow.exceptions import AirflowException
@@ -53,9 +54,6 @@ def get_dataset_uuid(**kwargs):
 def get_dataset_lz_path(**kwargs):
     ctx = kwargs['dag_run'].conf
     return ctx['lz_path']
-
-validation_queue = ''
-default_queue = ''
 
 
 # Following are defaults which can be overridden later on
@@ -107,19 +105,19 @@ with HMDAG('scan_and_begin_processing',
     def reset_queue(**kwargs):
         instance_ip = kwargs['ti'].xcom_pull(key='instance_ip', task_ids="initialize_environment")
         url = 'http://172.31.28.146:5556/api/worker/queue/add-consumer/celery-dev@spawn.cpunode.' + instance_ip
-        global default_queue
         default_queue = get_queue_resource('scan_and_begin_processing') + kwargs['dag_run'].conf['submission_id']
         res = requests.post(url=url, data={'queue': default_queue})
         if res.status_code > 200:
             return 1
         else:
-            global validation_queue
             validation_queue = get_queue_resource('scan_and_begin_processing', 'run_validation') \
                                + kwargs['dag_run'].conf['submission_id']
             res = requests.post(url=url, data={'queue': validation_queue})
             if res.status_code > 200:
                 return 1
             else:
+                kwargs['ti'].xcom_push(key='default_queue', value=default_queue)
+                kwargs['ti'].xcom_push(key='validation_queue', value=validation_queue)
                 return 0
 
     t_reset_queue = PythonOperator(
@@ -200,7 +198,7 @@ with HMDAG('scan_and_begin_processing',
         task_id='run_validation',
         python_callable=run_validation,
         provide_context=True,
-        queue=validation_queue,
+        queue={{dag.ti.xcom_pull(key="validation_queue", task_ids="reset_queue")}},
         op_kwargs={
         }
     )
