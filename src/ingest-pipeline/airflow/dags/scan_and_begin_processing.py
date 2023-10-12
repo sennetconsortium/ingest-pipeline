@@ -106,16 +106,16 @@ with HMDAG('scan_and_begin_processing',
 
     def reset_queue(**kwargs):
         instance_ip = kwargs['ti'].xcom_pull(key='instance_ip', task_ids="initialize_environment")
-        url = 'http://172.31.28.146:5556/api/worker/queue/add-consumer/celery-dev@base.cpunode.' + instance_ip
+        url = 'http://172.31.28.146:5556/api/worker/queue/add-consumer/celery-dev@spawn.cpunode.' + instance_ip
         global default_queue
-        default_queue = get_queue_resource('scan_and_begin_processing') + kwargs['dag_run'].confg['submission_id']
+        default_queue = get_queue_resource('scan_and_begin_processing') + kwargs['dag_run'].conf['submission_id']
         res = requests.post(url=url, data={'queue': default_queue})
         if res.status_code > 200:
             return 1
         else:
             global validation_queue
             validation_queue = get_queue_resource('scan_and_begin_processing', 'run_validation') \
-                               + kwargs['dag_run'].confg['submission_id']
+                               + kwargs['dag_run'].conf['submission_id']
             res = requests.post(url=url, data={'queue': validation_queue})
             if res.status_code > 200:
                 return 1
