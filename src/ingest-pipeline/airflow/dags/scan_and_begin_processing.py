@@ -56,6 +56,16 @@ def get_dataset_lz_path(**kwargs):
     return ctx['lz_path']
 
 
+def get_validation_queue(**kwargs):
+    ctx = kwargs['ti']
+    return ctx.xcom_pull(key="validation_queue", task_ids="reset_queue")
+
+
+def get_default_queue(**kwargs):
+    ctx = kwargs['ti']
+    return ctx.xcom_pull(key="default_queue", task_ids="reset_queue")
+
+
 # Following are defaults which can be overridden later on
 default_args = {
     'owner': 'hubmap',
@@ -198,7 +208,7 @@ with HMDAG('scan_and_begin_processing',
         task_id='run_validation',
         python_callable=run_validation,
         provide_context=True,
-        queue={{dag.ti.xcom_pull(key="validation_queue", task_ids="reset_queue")}},
+        queue=get_validation_queue,
         op_kwargs={
         }
     )
@@ -234,7 +244,7 @@ with HMDAG('scan_and_begin_processing',
         task_id='maybe_continue',
         python_callable=pythonop_maybe_keep,
         provide_context=True,
-        queue=default_queue,
+        queue=get_default_queue,
         op_kwargs={
             'next_op': 'run_md_extract',
             'bail_op': 'send_status_msg',
@@ -244,7 +254,7 @@ with HMDAG('scan_and_begin_processing',
 
     t_run_md_extract = BashOperator(
         task_id='run_md_extract',
-        queue=default_queue,
+        queue=get_default_queue,
         bash_command=""" \
         lz_dir="{{dag_run.conf.lz_path}}" ; \
         src_dir="{{dag_run.conf.src_path}}/md" ; \
@@ -266,7 +276,7 @@ with HMDAG('scan_and_begin_processing',
         task_id='md_consistency_tests',
         python_callable=utils.pythonop_md_consistency_tests,
         provide_context=True,
-        queue=default_queue,
+        queue=get_default_queue,
         op_kwargs={'metadata_fname': 'rslt.yml'}
         )
 
@@ -274,12 +284,12 @@ with HMDAG('scan_and_begin_processing',
         task_id='send_status_msg',
         python_callable=wrapped_send_status_msg,
         provide_context=True,
-        queue=default_queue,
+        queue=get_default_queue,
         trigger_rule='all_done'
     )
 
-    t_create_tmpdir = CreateTmpDirOperator(task_id='create_temp_dir', queue=default_queue,)
-    t_cleanup_tmpdir = CleanupTmpDirOperator(task_id='cleanup_temp_dir', queue=default_queue,)
+    t_create_tmpdir = CreateTmpDirOperator(task_id='create_temp_dir', queue=get_default_queue,)
+    t_cleanup_tmpdir = CleanupTmpDirOperator(task_id='cleanup_temp_dir', queue=get_default_queue,)
 
     def flex_maybe_spawn(**kwargs):
         """
@@ -322,7 +332,7 @@ with HMDAG('scan_and_begin_processing',
         task_id='flex_maybe_spawn',
         provide_context=True,
         python_callable=flex_maybe_spawn,
-        queue=default_queue,
+        queue=get_default_queue,
         )
 
 
