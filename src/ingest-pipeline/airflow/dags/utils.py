@@ -671,12 +671,6 @@ def pythonop_trigger_target(**kwargs) -> None:
     pprint(kwargs)
 
 
-def get_environment_instance() -> str:
-    environment = os.getenv('HUBMAP_INSTANCE')
-    print(f'The environment {environment}')
-    return environment.upper()
-
-
 def pythonop_maybe_keep(**kwargs) -> str:
     """
     accepts the following via the caller's op_kwargs:
@@ -1666,15 +1660,6 @@ def get_threads_resource(dag_id: str, task_id: Optional[str] = None) -> int:
         )
     else:
         return int(rec.get("threads"))
-
-
-def get_instance_type(dag_id: str, task_id: Optional[str] = None) -> str:
-    """
-    Look up for the AWS instance type the dag_id needs to be run with.
-    """
-    rec = _lookup_resource_record(dag_id, task_id)
-    assert 'instance_type' in rec, 'schema should guarantee "instance_type" is present?'
-    return rec.get('instance_type')
 
 
 def get_type_client() -> TypeClient:

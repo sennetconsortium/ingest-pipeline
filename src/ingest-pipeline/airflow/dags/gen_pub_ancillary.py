@@ -52,6 +52,7 @@ default_args = {
     "retries": 1,
     "retry_delay": timedelta(minutes=1),
     "xcom_push": True,
+    "executor_config": {"SlurmExecutor": {"slurm_output_path": "/home/codcc/airflow-logs/slurm/"}},
     "queue": get_queue_resource("gen_pub_ancillary"),
 }
 

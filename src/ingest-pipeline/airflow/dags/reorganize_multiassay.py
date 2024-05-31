@@ -44,6 +44,7 @@ default_args = {
     "email_on_retry": False,
     "retries": 1,
     "retry_delay": timedelta(minutes=1),
+    "executor_config": {"SlurmExecutor": {"slurm_output_path": "/home/codcc/airflow-logs/slurm/"}},
     "queue": get_queue_resource("reorganize_upload"),
 }
 

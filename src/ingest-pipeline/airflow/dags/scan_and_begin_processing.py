@@ -22,14 +22,7 @@ from utils import (
     make_send_status_msg_function,
     pythonop_get_dataset_state,
     pythonop_maybe_keep,
-    get_instance_type,
     get_threads_resource,
-    get_environment_instance,
-)
-
-from aws_utils import (
-    create_instance,
-    terminate_instance
 )
 
 from airflow.configuration import conf as airflow_conf
@@ -71,6 +64,7 @@ default_args = {
     "retry_delay": timedelta(minutes=1),
     "xcom_push": True,
     "queue": get_queue_resource("scan_and_begin_processing"),
+    "executor_config": {"SlurmExecutor": {"slurm_output_path": "/home/codcc/airflow-logs/slurm/"}},
     "on_failure_callback": utils.create_dataset_state_error_callback(get_dataset_uuid),
 }
 
@@ -85,26 +79,6 @@ with HMDAG(
         "preserve_scratch": get_preserve_scratch_resource("scan_and_begin_processing"),
     },
 ) as dag:
-    def start_new_environment(**kwargs):
-        uuid = kwargs["dag_run"].conf["submission_id"]
-        instance_id = create_instance(uuid, f"Airflow {get_environment_instance()} Worker",
-                                      get_instance_type(kwargs["dag_run"].conf["dag_id"]))
-        if instance_id is None:
-            return 1
-        else:
-            kwargs["ti"].xcom_push(key="instance_id", value=instance_id)
-            return 0
-
-
-    t_initialize_environment = PythonOperator(
-        task_id="initialize_environment",
-        python_callable=start_new_environment,
-        provide_context=True,
-        op_kwargs={
-        }
-    )
-
-
     def read_metadata_file(**kwargs):
         md_fname = os.path.join(utils.get_tmp_dir_path(kwargs["run_id"]), "rslt.yml")
         with open(md_fname, "r") as f:
@@ -321,27 +295,8 @@ with HMDAG(
     )
 
 
-    def terminate_new_environment(**kwargs):
-        instance_id = kwargs["ti"].xcom_pull(key="instance_id", task_ids="initialize_environment")
-        if instance_id is None:
-            return 1
-        else:
-            uuid = kwargs["dag_run"].conf["submission_id"]
-            terminate_instance(instance_id, uuid)
-        return 0
-
-
-    t_terminate_environment = PythonOperator(
-        task_id="terminate_environment",
-        python_callable=terminate_new_environment,
-        provide_context=True,
-        op_kwargs={
-        }
-    )
-
     (
-            t_initialize_environment
-            >> t_create_tmpdir
+            t_create_tmpdir
             >> t_run_validation
             >> t_maybe_continue
             >> t_run_md_extract
@@ -349,8 +304,6 @@ with HMDAG(
             >> t_send_status
             >> t_maybe_spawn
             >> t_cleanup_tmpdir
-            >> t_terminate_environment
     )
 
     t_maybe_continue >> t_send_status
-    t_send_status >> t_terminate_environment

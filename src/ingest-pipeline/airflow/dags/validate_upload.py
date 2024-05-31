@@ -22,13 +22,6 @@ from utils import (
     get_threads_resource,
     get_tmp_dir_path,
     pythonop_get_dataset_state,
-    get_instance_type,
-    get_environment_instance
-)
-
-from aws_utils import (
-    create_instance,
-    terminate_instance
 )
 
 from airflow.configuration import conf as airflow_conf
@@ -56,6 +49,7 @@ default_args = {
     "retries": 1,
     "retry_delay": timedelta(minutes=1),
     "xcom_push": True,
+    "executor_config": {"SlurmExecutor": {"slurm_output_path": "/home/codcc/airflow-logs/slurm/"}},
     "queue": get_queue_resource("validate_upload"),
 }
 
@@ -69,25 +63,6 @@ with HMDAG(
         "preserve_scratch": get_preserve_scratch_resource("validate_upload"),
     },
 ) as dag:
-
-    def start_new_environment(**kwargs):
-        uuid = kwargs['dag_run'].conf['uuid']
-        instance_id = create_instance(uuid, f'Airflow {get_environment_instance()} Worker',
-                                      get_instance_type(kwargs['dag_run'].conf['dag_id']))
-        if instance_id is None:
-            return 1
-        else:
-            kwargs['ti'].xcom_push(key='instance_id', value=instance_id)
-            return 0
-
-
-    t_initialize_environment = PythonOperator(
-        task_id='initialize_environment',
-        python_callable=start_new_environment,
-        provide_context=True,
-        op_kwargs={
-        }
-    )
 
     def find_uuid(**kwargs):
         uuid = kwargs["dag_run"].conf["uuid"]
@@ -203,34 +178,13 @@ with HMDAG(
         provide_context=True,
     )
 
-
-    def terminate_new_environment(**kwargs):
-        instance_id = kwargs['ti'].xcom_pull(key='instance_id', task_ids="initialize_environment")
-        if instance_id is None:
-            return 1
-        else:
-            uuid = kwargs['dag_run'].conf['uuid']
-            terminate_instance(instance_id, uuid)
-        return 0
-
-
-    t_terminate_environment = PythonOperator(
-        task_id='terminate_environment',
-        python_callable=terminate_new_environment,
-        provide_context=True,
-        op_kwargs={
-        }
-    )
-
     t_create_tmpdir = CreateTmpDirOperator(task_id="create_temp_dir")
     t_cleanup_tmpdir = CleanupTmpDirOperator(task_id="cleanup_temp_dir")
 
     (
-        t_initialize_environment
-        >> t_create_tmpdir
+        t_create_tmpdir
         >> t_find_uuid
         >> t_run_validation
         >> t_send_status
         >> t_cleanup_tmpdir
-        >> t_terminate_environment
       )

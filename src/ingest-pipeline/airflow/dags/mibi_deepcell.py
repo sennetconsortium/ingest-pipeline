@@ -43,6 +43,11 @@ default_args = {
     'retry_delay': timedelta(minutes=1),
     'xcom_push': True,
     'queue': get_queue_resource('mibi_deepcell'),
+    "executor_config": {"SlurmExecutor": {"slurm_output_path": "/home/codcc/airflow-logs/slurm/",
+                                          "gpu_params": {
+                                              "queue": get_queue_resource("mibi_deepcell", "segmentation"),
+                                          },
+                                          }},
     'on_failure_callback': utils.create_dataset_state_error_callback(get_uuid_for_error),
 }
 
