@@ -151,7 +151,6 @@ with HMDAG('salmon_rnaseq_bulk',
         provide_context=True,
     )
 
-
     t_log_info = LogInfoOperator(task_id='log_info')
     t_join = JoinOperator(task_id='join')
     t_create_tmpdir = CreateTmpDirOperator(task_id='create_tmpdir')
@@ -175,4 +174,3 @@ with HMDAG('salmon_rnaseq_bulk',
     t_maybe_keep_cwl1 >> t_set_dataset_error
     t_set_dataset_error >> t_join
     t_join >> t_cleanup_tmpdir
-    t_cleanup_tmpdir >> t_terminate_environment
