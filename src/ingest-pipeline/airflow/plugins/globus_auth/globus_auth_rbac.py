@@ -6,7 +6,7 @@ import globus_sdk
 from airflow.configuration import conf
 from airflow import configuration
 from airflow.utils.log.logging_mixin import LoggingMixin
-from airflow.www.security import AirflowSecurityManager
+from airflow.providers.fab.auth_manager.security_manager.override import FabAirflowSecurityManagerOverride
 from flask import flash, g, url_for, request
 from flask_appbuilder import expose
 from flask_appbuilder._compat import as_unicode
@@ -133,7 +133,7 @@ class CustomOAuthView(AuthOAuthView):
         return self.authHelper.getUserInfo(token, True)
 
 
-class OIDCSecurityManager(AirflowSecurityManager):
+class OIDCSecurityManager(FabAirflowSecurityManagerOverride):
     """
     Custom security manager class that allows using the OpenID Connection authentication method.
     """
