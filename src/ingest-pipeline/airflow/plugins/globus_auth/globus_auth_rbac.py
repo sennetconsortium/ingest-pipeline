@@ -56,10 +56,13 @@ class CustomOAuthView(AuthOAuthView):
     @expose("/login/", methods=["GET", "POST"])
     def login(self):
         if g.user is not None and g.user.is_authenticated:
-            return redirect(self.appbuilder.get_url_for_index)
-        redirect_url = url_for('.login', _external=True, _scheme=get_config_param('scheme')).rstrip('/')
+            url_static = get_config_param("server_url").strip('"') + "/home"
+            # url_flask = self.appbuilder.get_url_for_index
+            return redirect(url_static)
+        # redirect_url = url_for('.login', _external=True, _scheme=get_config_param('scheme')).rstrip('/')
+        redirect_url_static = get_config_param("server_url").strip('"') + "/login"
 
-        self.globus_oauth.oauth2_start_flow(redirect_url)
+        self.globus_oauth.oauth2_start_flow(redirect_url_static)
 
         if 'code' not in request.args:
             auth_uri = self.globus_oauth.oauth2_get_authorize_url(query_params={
@@ -73,7 +76,8 @@ class CustomOAuthView(AuthOAuthView):
                 tokens = self.globus_oauth.oauth2_exchange_code_for_tokens(code)
             except Exception as e:
                 log.info(f'Exception on oauth2, probably invalid token {e}')
-                return redirect(self.appbuilder.get_url_for_login)
+                url_flask = self.appbuilder.get_url_for_login
+                return redirect(redirect_url_static)
             f_session['tokens'] = tokens.by_resource_server
 
             user_info = self.get_globus_user_profile_info(
@@ -100,7 +104,9 @@ class CustomOAuthView(AuthOAuthView):
             else:
                 login_user(user)
                 self.appbuilder.sm.update_user_auth_stat(user)
-                return redirect(self.appbuilder.get_url_for_index)
+                url_flask = self.appbuilder.get_url_for_index
+                url_static = get_config_param("server_url").strip('"') + "/home"
+                return redirect(url_static)
 
     @expose("/logout/", methods=["GET", "POST"])
     def logout(self, seesion=None):
