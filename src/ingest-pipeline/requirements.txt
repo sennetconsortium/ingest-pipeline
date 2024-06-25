@@ -46,3 +46,4 @@ python-frontmatter>=1.0.0
 imagecodecs>=2023.3.16
 pendulum==2.1.2
 Flask-Session==0.4.0
+numpy==1.24.3
