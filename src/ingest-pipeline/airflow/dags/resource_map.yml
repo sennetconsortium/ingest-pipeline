@@ -10,7 +10,7 @@ resource_map:
         'queue': 'COMPUTE'
         'threads': 6
       - 'task_re': '.*'
-        'queue': 'APP'
+        'queue': 'APPS'
         'threads': 6
   - 'dag_re': 'visium*'
     'preserve_scratch': true
@@ -20,7 +20,7 @@ resource_map:
         'queue': 'COMPUTE'
         'threads': 6
       - 'task_re': '.*'
-        'queue': 'APPP'
+        'queue': 'APPS'
         'threads': 6
   - 'dag_re': 'codex_cytokit'
     'preserve_scratch': true
@@ -33,7 +33,7 @@ resource_map:
         'queue': 'COMPUTE'
         'threads': 6
       - 'task_re': '.*'
-        'queue': 'APP'
+        'queue': 'APPS'
         'threads': 6
   - 'dag_re': 'ometiff_pyramid'
     'preserve_scratch': true
@@ -43,14 +43,14 @@ resource_map:
         'queue': 'COMPUTE'
         'threads': 6
       - 'task_re': '.*'
-        'queue': 'APP'
+        'queue': 'APPS'
         'threads': 6
   - 'dag_re': 'launch_checksums'
     'preserve_scratch': true
     'lanes': 1
     'tasks':
       - 'task_re': '.*'
-        'queue': 'APP'
+        'queue': 'APPS'
         'threads': 6
   - 'dag_re': 'scan_and_begin_processing'
     'preserve_scratch': true
@@ -60,7 +60,7 @@ resource_map:
         'queue': 'BIG'
         'coreuse': 60
       - 'task_re': '.*'
-        'queue': 'APP'
+        'queue': 'APPS'
         'threads': 6
   - 'dag_re': 'validate_upload'
     'preserve_scratch': true
@@ -70,14 +70,14 @@ resource_map:
         'queue': 'BIG'
         'coreuse': 60
       - 'task_re': '.*'
-        'queue': 'APP'
+        'queue': 'APPS'
         'threads': 6
   - 'dag_re': '.*metadata'
     'preserve_scratch': true
     'lanes': 1
     'tasks':
       - 'task_re': '.*'
-        'queue': 'APP'
+        'queue': 'APPS'
         'threads': 6
   - 'dag_re': '.*multiome'
     'preserve_scratch': true
@@ -87,12 +87,12 @@ resource_map:
         'queue': 'COMPUTE'
         'threads': 6
       - 'task_re': '.*'
-        'queue': 'APP'
+        'queue': 'APPS'
         'threads': 6
   - 'dag_re': '.*'
     'preserve_scratch': true
     'lanes': 1
     'tasks':
       - 'task_re': '.*'
-        'queue': 'APP'
+        'queue': 'APPS'
         'threads': 6
