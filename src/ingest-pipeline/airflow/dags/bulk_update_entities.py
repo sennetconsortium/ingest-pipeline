@@ -93,7 +93,7 @@ with HMDAG(
         auth_tok = get_auth_tok(**kwargs)
         headers = {
             "content-type": "application/json",
-            "X-Hubmap-Application": "ingest-pipeline",
+            "X-SenNet-Application": "ingest-pipeline",
             "Authorization": f"Bearer {auth_tok}",
         }
 
