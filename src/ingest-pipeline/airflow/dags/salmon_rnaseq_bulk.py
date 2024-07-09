@@ -55,8 +55,10 @@ default_args = {
     'on_failure_callback': utils.create_dataset_state_error_callback(get_uuid_for_error),
 }
 
+
 def get_organism_name()->str:
     return "human"
+
 
 with HMDAG('salmon_rnaseq_bulk',
            schedule_interval=None,
