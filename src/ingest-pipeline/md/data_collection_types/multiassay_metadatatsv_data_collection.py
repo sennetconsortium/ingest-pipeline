@@ -83,6 +83,7 @@ class MultiassayMetadataTSVDataCollection(DataCollection):
                     headers = {
                         "content-type": "application/json",
                         "X-SenNet-Application": "ingest-pipeline",
+                        "Authorization": f"Bearer {os.getenv('AUTH_TOK')}",
                     }
 
                     try:
