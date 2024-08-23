@@ -61,3 +61,6 @@
 [submodule "src/ingest-pipeline/airflow/dags/cwl/multiome-rna-atac-pipeline"]
 	path = src/ingest-pipeline/airflow/dags/cwl/multiome-rna-atac-pipeline
 	url = https://github.com/hubmapconsortium/multiome-rna-atac-pipeline
+[submodule "src/ingest-pipeline/airflow/dags/cwl/visium-pipeline"]
+	path = src/ingest-pipeline/airflow/dags/cwl/visium-pipeline
+	url = https://github.com/hubmapconsortium/visium-pipeline
