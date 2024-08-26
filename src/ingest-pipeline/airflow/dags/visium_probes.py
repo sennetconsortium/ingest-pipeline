@@ -121,22 +121,6 @@ with HMDAG(
         data_dir = get_parent_data_dir(**kwargs)
         print("data_dirs: ", data_dir)
 
-        source_type = ""
-        unique_source_types = set()
-        for parent_uuid in get_parent_dataset_uuids_list(**kwargs):
-            dataset_state = pythonop_get_dataset_state(
-                dataset_uuid_callable=lambda **kwargs: parent_uuid, **kwargs)
-            source_type = dataset_state.get("source_type")
-            if source_type == "mixed":
-                print("Force failure. Should only be one unique source_type for a dataset.")
-            else:
-                unique_source_types.add(source_type)
-
-        if len(unique_source_types) > 1:
-            print("Force failure. Should only be one unique source_type for a dataset.")
-        else:
-            source_type = unique_source_types.pop().lower()
-
         command = [
             *get_cwltool_base_cmd(tmpdir),
             "--relax-path-checks",
@@ -148,8 +132,7 @@ with HMDAG(
             "visium-ff",
             "--threads",
             get_threads_resource(dag.dag_id),
-            "--organism",
-            source_type,
+
         ]
 
         command.append("--fastq_dir")
