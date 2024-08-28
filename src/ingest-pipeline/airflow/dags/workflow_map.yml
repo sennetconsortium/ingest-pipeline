@@ -128,4 +128,7 @@ workflow_map:
   - 'collection_type': '.*'
     'assay_type': '10x-multiome'
     'workflow': 'multiome_10x'
+  - 'collection_type': '.*'
+    'assay_type': 'visium-with-probes'
+    'workflow': 'visium_with_probes'
 

@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta
 from pathlib import Path
+import pandas as pd
 
 from airflow.operators.bash import BashOperator
 from airflow.operators.dummy import DummyOperator
@@ -31,6 +32,13 @@ from utils import (
     get_queue_resource,
     get_threads_resource,
     get_preserve_scratch_resource,
+    get_instance_type,
+    get_environment_instance,
+)
+
+from aws_utils import (
+    create_instance,
+    terminate_instance
 )
 
 
@@ -44,23 +52,29 @@ default_args = {
     "retries": 1,
     "retry_delay": timedelta(minutes=1),
     "xcom_push": True,
-    "queue": get_queue_resource("visium_no_probes"),
-    "executor_config": {"SlurmExecutor": {"slurm_output_path": "/home/codcc/airflow-logs/slurm/"}},
+    "queue": get_queue_resource("visium_with_probes"),
     "on_failure_callback": utils.create_dataset_state_error_callback(get_uuid_for_error),
 }
 
+def find_rna_metadata_file(data_dir: Path) -> Path:
+    for path in data_dir.glob("*.tsv"):
+        name_lower = path.name.lower()
+        if path.is_file() and "rna" in name_lower and "metadata" in name_lower:
+            return path
+    raise ValueError("Couldn't find RNA-seq metadata file")
+
 with HMDAG(
-    "visium_no_probes",
+    "visium_with_probes",
     schedule_interval=None,
     is_paused_upon_creation=False,
     default_args=default_args,
     user_defined_macros={
         "tmp_dir_path": get_tmp_dir_path,
-        "preserve_scratch": get_preserve_scratch_resource("visium_no_probes"),
+        "preserve_scratch": get_preserve_scratch_resource("visium_with_probes"),
     },
 ) as dag:
     cwl_workflows = get_absolute_workflows(
-        Path("salmon-rnaseq", "pipeline.cwl"),
+        Path("visium-pipeline", "pipeline.cwl"),
         Path("portal-containers", "h5ad-to-arrow.cwl"),
         Path("portal-containers", "anndata-to-ui.cwl"),
         Path("ome-tiff-pyramid", "pipeline.cwl"),
@@ -68,7 +82,7 @@ with HMDAG(
     )
 
     def build_dataset_name(**kwargs):
-        return inner_build_dataset_name(dag.dag_id, "salmon-rnaseq", **kwargs)
+        return inner_build_dataset_name(dag.dag_id, "visium-pipeline", **kwargs)
 
     prepare_cwl1 = DummyOperator(task_id="prepare_cwl1")
 
@@ -80,6 +94,25 @@ with HMDAG(
 
     prepare_cwl5 = DummyOperator(task_id="prepare_cwl5")
 
+    def start_new_environment(**kwargs):
+        uuid = kwargs['run_id']
+        instance_id = create_instance(uuid, f'Airflow {get_environment_instance()} Worker',
+                                      get_instance_type(dag.dag_id))
+        if instance_id is None:
+            return 1
+        else:
+            kwargs['ti'].xcom_push(key='instance_id', value=instance_id)
+            return 0
+
+
+    t_initialize_environment = PythonOperator(
+        task_id='initialize_environment',
+        python_callable=start_new_environment,
+        provide_context=True,
+        op_kwargs={
+        }
+    )
+
     def build_cwltool_cmd1(**kwargs):
         run_id = kwargs["run_id"]
         tmpdir = get_tmp_dir_path(run_id)
@@ -87,22 +120,6 @@ with HMDAG(
 
         data_dir = get_parent_data_dir(**kwargs)
         print("data_dirs: ", data_dir)
-
-        source_type = ""
-        unique_source_types = set()
-        for parent_uuid in get_parent_dataset_uuids_list(**kwargs):
-            dataset_state = pythonop_get_dataset_state(
-                dataset_uuid_callable=lambda **kwargs: parent_uuid, **kwargs)
-            source_type = dataset_state.get("source_type")
-            if source_type == "mixed":
-                print("Force failure. Should only be one unique source_type for a dataset.")
-            else:
-                unique_source_types.add(source_type)
-
-        if len(unique_source_types) > 1:
-            print("Force failure. Should only be one unique source_type for a dataset.")
-        else:
-            source_type = unique_source_types.pop().lower()
 
         command = [
             *get_cwltool_base_cmd(tmpdir),
@@ -115,8 +132,7 @@ with HMDAG(
             "visium-ff",
             "--threads",
             get_threads_resource(dag.dag_id),
-            "--organism",
-            source_type,
+
         ]
 
         command.append("--fastq_dir")
@@ -127,6 +143,14 @@ with HMDAG(
 
         command.append("--metadata_dir")
         command.append(data_dir / "raw/")
+
+        rna_metadata_file = find_rna_metadata_file(data_dir)
+        metadata_df = pd.read_csv(rna_metadata_file, sep='\t')
+        probe_set = metadata_df.oligo_probe_panel.iloc[0]
+        probe_set_version = 2 if "v2" in probe_set else 1
+
+        command.append("--visium_probe_set_version")
+        command.append(probe_set_version)
 
         return join_quote_command_str(command)
 
@@ -353,7 +377,7 @@ with HMDAG(
             "previous_revision_uuid_callable": get_previous_revision_uuid,
             "http_conn_id": "ingest_api_connection",
             "dataset_name_callable": build_dataset_name,
-            "pipeline_shorthand": "Salmon + Scanpy",
+            "pipeline_shorthand": "BWA + Scanpy",
         },
     )
 
@@ -365,7 +389,7 @@ with HMDAG(
         op_kwargs={
             "dataset_uuid_callable": get_dataset_uuid,
             "ds_state": "Error",
-            "message": f"An error occurred in salmon-rnaseq",
+            "message": f"An error occurred in visium pipeline",
         },
     )
 
@@ -381,6 +405,24 @@ with HMDAG(
         provide_context=True,
     )
 
+    def terminate_new_environment(**kwargs):
+        instance_id = kwargs['ti'].xcom_pull(key='instance_id', task_ids="initialize_environment")
+        if instance_id is None:
+            return 1
+        else:
+            uuid = kwargs['run_id']
+            terminate_instance(instance_id, uuid)
+        return 0
+
+
+    t_terminate_environment = PythonOperator(
+        task_id='terminate_environment',
+        python_callable=terminate_new_environment,
+        provide_context=True,
+        op_kwargs={
+        }
+    )
+
     t_log_info = LogInfoOperator(task_id="log_info")
     t_join = JoinOperator(task_id="join")
     t_create_tmpdir = CreateTmpDirOperator(task_id="create_tmpdir")
@@ -393,6 +435,7 @@ with HMDAG(
         >> t_create_tmpdir
         >> t_send_create_dataset
         >> t_set_dataset_processing
+        >> t_initialize_environment
         >> prepare_cwl1
         >> t_build_cmd1
         >> t_pipeline_exec
@@ -416,6 +459,7 @@ with HMDAG(
         >> t_move_data
         >> t_send_status
         >> t_join
+        >> t_terminate_environment
     )
     t_maybe_keep_cwl1 >> t_set_dataset_error
     t_maybe_keep_cwl2 >> t_set_dataset_error
@@ -424,3 +468,4 @@ with HMDAG(
     t_maybe_keep_cwl5 >> t_set_dataset_error
     t_set_dataset_error >> t_join
     t_join >> t_cleanup_tmpdir
+    t_cleanup_tmpdir >> t_terminate_environment
