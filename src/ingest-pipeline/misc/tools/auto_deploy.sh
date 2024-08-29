@@ -2,7 +2,7 @@
 
 # What variables do we need?
 # Define CODCC machines
-# codcc_machines=("c0" "c1" "c2" "c3" "c4" "c5")
+# codcc_machines=("c0" "c1" "c2" "c3" "c4" "c5" "g0")
 codcc_machines=()
 
 priority_list=("-prod" "-test" "-dev")
@@ -50,6 +50,6 @@ for machine in "${codcc_machines[@]}"; do
 
        	# If flag set, run the conda environment regenerations
         if $regenerate_env ; then
-                ssh $machine "/usr/local/bin/update_hubmap.sh $repo_dir $repo_env $python_version"
+                ssh $machine "/usr/local/bin/update_moonshot.sh $repo_dir $repo_env $python_version"
         fi
 done
