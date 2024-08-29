@@ -5,7 +5,7 @@
 # codcc_machines=("c0" "c1" "c2" "c3" "c4" "c5")
 codcc_machines=()
 
-priority_list=("-prod -test -dev")
+priority_list=("-prod" "-test" "-dev")
 base_name="airflow"
 file_dir="/etc/sysconfig"
 
