@@ -348,7 +348,7 @@ def copy_contrib_antibodies(dest_extras_path, source_entity, old_paths, dryrun):
             else:
                 print(
                     f"""Probably already copied/moved {src_path} 
-                                              to {dest_path} {"it exists" if dest_path.exists() else "missing file"}"""
+                                  to {dest_path} {"it exists" if dest_path.exists() else "missing file"}"""
                 )
 
 
