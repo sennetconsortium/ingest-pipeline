@@ -132,9 +132,10 @@ with HMDAG(
         ignore_globs = [uuid, "extras", "*metadata.tsv", "validation_report.txt"]
         app_context = {
             "entities_url": HttpHook.get_connection("entity_api_connection").host + "/entities/",
+            "uuid_url": HttpHook.get_connection("uuid_api_connection").host + "/uuid/",
             "ingest_url": urlparser.unquote(
                 os.environ["AIRFLOW_CONN_INGEST_API_CONNECTION"]).split("http://")[1],
-            "request_header": {"X-Hubmap-Application": "ingest-pipeline"},
+            "request_header": {"X-SenNet-Application": "ingest-pipeline"},
         }
         #
         # Uncomment offline=True below to avoid validating orcid_id URLs &etc
@@ -159,6 +160,7 @@ with HMDAG(
         validation_file_path = Path(get_tmp_dir_path(kwargs["run_id"])) / "validation_report.txt"
         with open(validation_file_path, "w") as f:
             f.write(report.as_text())
+        kwargs["ti"].xcom_push(key="error_counts", value=json.dumps(report.counts, indent=9).strip("{}").replace('"', "").replace(",", ""))
         kwargs["ti"].xcom_push(key="validation_file_path", value=str(validation_file_path))
 
     t_run_validation = PythonOperator(
@@ -169,6 +171,7 @@ with HMDAG(
 
     def send_status_msg(**kwargs):
         validation_file_path = Path(kwargs["ti"].xcom_pull(key="validation_file_path"))
+        error_counts = Path(kwargs["ti"].xcom_pull(key="error_counts"))
         with open(validation_file_path) as f:
             report_txt = f.read()
         if report_txt.startswith("No errors!"):
@@ -181,12 +184,22 @@ with HMDAG(
             extra_fields = {
                 "validation_message": report_txt[-20000:],
             }
+            if not error_counts:
+                logging.info("ERROR: status is invalid but error_counts not found.")
         logging.info(
             f"""
                      status: {status.value}
                      validation_message: {extra_fields['validation_message']}
                      """
         )
+        if error_counts:
+            logging.info(
+                f"""
+                ------------
+                Error counts:
+                {error_counts}
+                ------------
+                """)
         StatusChanger(
             kwargs["ti"].xcom_pull(key="uuid"),
             get_auth_tok(**kwargs),
