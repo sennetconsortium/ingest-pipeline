@@ -8,7 +8,6 @@ from pathlib import Path
 import pandas as pd
 import requests
 
-from hubmap_commons.type_client import TypeClient
 from hubmap_commons.hm_auth import AuthHelper
 
 # No trailing slashes in the following URLs!
@@ -612,7 +611,6 @@ class EntityFactory:
         assert (instance is None
                 or instance in ['PROD', 'STAGE', 'TEST', 'DEV']), 'invalid instance'
         self.instance = instance or 'PROD'
-        # self.type_client = TypeClient(ENDPOINTS[self.instance]['assay_info_url'])
 
     def fetch_new_dataset_table(self):
         """
@@ -693,7 +691,8 @@ class EntityFactory:
                        assay_type,
                        direct_ancestor_uuids,
                        group_uuid,
-                       description):
+                       description,
+                       is_epic):
         """
         Creates an entirely new Dataset entity, including updating the databases.
         The created Dataset is returned.  Only a single data_type/assay_type is
@@ -706,6 +705,8 @@ class EntityFactory:
                 "direct_ancestor_uuids": direct_ancestor_uuids,
                 "group_uuid": group_uuid,
                 "description": description}
+        if is_epic:
+            data.update({"creation_action": "External Process"})
         print(f'Creating dataset with data {data}')
         r = requests.post(f'{ingest_url}/datasets',
                           data=json.dumps(data),
