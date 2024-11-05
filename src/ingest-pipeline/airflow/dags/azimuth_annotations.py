@@ -32,6 +32,13 @@ from utils import (
     get_dataname_previous_version,
     build_provenance_function,
     get_assay_previous_version,
+    get_instance_type,
+    get_environment_instance,
+)
+
+from aws_utils import (
+    create_instance,
+    terminate_instance
 )
 
 
@@ -84,6 +91,25 @@ with HMDAG(
     prepare_cwl2 = DummyOperator(task_id="prepare_cwl2")
 
     prepare_cwl3 = DummyOperator(task_id="prepare_cwl3")
+
+    def start_new_environment(**kwargs):
+        uuid = kwargs['run_id']
+        instance_id = create_instance(uuid, f'Airflow {get_environment_instance()} Worker',
+                                      get_instance_type(dag.dag_id))
+        if instance_id is None:
+            return 1
+        else:
+            kwargs['ti'].xcom_push(key='instance_id', value=instance_id)
+            return 0
+
+
+    t_initialize_environment = PythonOperator(
+        task_id='initialize_environment',
+        python_callable=start_new_environment,
+        provide_context=True,
+        op_kwargs={
+        }
+    )
 
     def build_cwltool_cmd1(**kwargs):
         run_id = kwargs["run_id"]
@@ -319,6 +345,25 @@ with HMDAG(
         provide_context=True,
     )
 
+
+    def terminate_new_environment(**kwargs):
+        instance_id = kwargs['ti'].xcom_pull(key='instance_id', task_ids="initialize_environment")
+        if instance_id is None:
+            return 1
+        else:
+            uuid = kwargs['run_id']
+            terminate_instance(instance_id, uuid)
+        return 0
+
+
+    t_terminate_environment = PythonOperator(
+        task_id='terminate_environment',
+        python_callable=terminate_new_environment,
+        provide_context=True,
+        op_kwargs={
+        }
+    )
+
     t_log_info = LogInfoOperator(task_id="log_info")
     t_move_data = MoveDataOperator(task_id="move_data", trigger_rule="all_done")
     t_join = JoinOperator(task_id="join")
@@ -334,6 +379,7 @@ with HMDAG(
         >> t_populate_tmpdir
         >> prepare_cwl1
         >> t_build_cmd1
+        >> t_initialize_environment
         >> t_pipeline_exec_azimuth_annotate
         >> t_maybe_keep_cwl1
         >> prepare_cwl2
@@ -362,3 +408,4 @@ with HMDAG(
     t_maybe_keep_cwl3 >> t_set_dataset_error
     t_set_dataset_error >> t_join
     t_join >> t_cleanup_tmpdir
+    t_cleanup_tmpdir >> t_terminate_environment
