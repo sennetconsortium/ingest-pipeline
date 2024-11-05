@@ -35,7 +35,7 @@ from utils import (
     get_threads_resource,
     get_preserve_scratch_resource,
     get_instance_type,
-    get_environment_instance
+    get_environment_instance,
 )
 
 from aws_utils import (
