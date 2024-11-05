@@ -207,7 +207,7 @@ resource_map:
   - 'dag_re': 'azimuth_annotations'
     'preserve_scratch': true
     'lanes': 1
-    'instance_type': 'r6i.medium'
+    'instance_type': 'r6i.large'
     'tasks':
       - 'task_re': '.*cwl.*|.*cmd.*|.*azimuth.*|.*ui.*'
         'queue': 'processing'
