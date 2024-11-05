@@ -79,11 +79,15 @@ with HMDAG(
         Path("portal-containers", "h5ad-to-arrow.cwl"),
         Path("portal-containers", "anndata-to-ui.cwl"),
     )
-    cwl_workflows_annotations = get_absolute_workflows(
+    cwl_workflows_annotations_salmon = get_absolute_workflows(
         Path("azimuth-annotate", "pipeline.cwl"),
         Path("portal-containers", "h5ad-to-arrow.cwl"),
         Path("portal-containers", "anndata-to-ui.cwl"),
-        Path("portal-containers", "mudata-to-ui.cwl")
+    )
+    cwl_workflows_annotations_multiome = get_absolute_workflows(
+        Path("azimuth-annotate", "pipeline.cwl"),
+        Path("portal-containers", "h5ad-to-arrow.cwl"),
+        Path("portal-containers", "mudata-to-ui.cwl"),
     )
 
     prepare_cwl1 = DummyOperator(task_id="prepare_cwl1")
@@ -324,13 +328,23 @@ with HMDAG(
         no_provenance=True,
     )
 
-    build_provenance = build_provenance_function(
-        cwl_workflows=cwl_workflows_annotations,
+    build_provenance_salmon = build_provenance_function(
+        cwl_workflows=cwl_workflows_annotations_salmon,
     )
 
-    t_build_provenance = PythonOperator(
+    build_provenance_multiome = build_provenance_function(
+        cwl_workflows=cwl_workflows_annotations_multiome,
+    )
+
+    t_build_provenance_salmon = PythonOperator(
+        task_id="build_provenance_salmon",
+        python_callable=build_provenance_salmon,
+        provide_context=True,
+    )
+
+    t_build_provenance_multiome = PythonOperator(
         task_id="build_provenance",
-        python_callable=build_provenance,
+        python_callable=build_provenance_multiome,
         provide_context=True,
     )
 
@@ -366,7 +380,8 @@ with HMDAG(
 
     t_log_info = LogInfoOperator(task_id="log_info")
     t_move_data = MoveDataOperator(task_id="move_data", trigger_rule="all_done")
-    t_join = JoinOperator(task_id="join")
+    t_join_salmon = JoinOperator(task_id="join_salmon")
+    t_join_multiome = JoinOperator(task_id="join_multiome")
     t_create_tmpdir = CreateTmpDirOperator(task_id="create_tmpdir")
     t_cleanup_tmpdir = CleanupTmpDirOperator(task_id="cleanup_tmpdir")
     t_set_dataset_processing = SetDatasetProcessingOperator(task_id="set_dataset_processing")
@@ -392,20 +407,20 @@ with HMDAG(
         >> t_convert_for_ui_2
         >> t_maybe_keep_cwl3
         >> t_move_data
-        >> t_build_provenance
+        >> t_build_provenance_salmon
         >> t_send_status_salmon
-        >> t_join
+        >> t_join_salmon
     )
     (
         t_maybe_skip_cwl3
         >> t_move_data
-        >> t_build_provenance
+        >> t_build_provenance_multiome
         >> t_send_status_multiome
-        >> t_join
+        >> t_join_multiome
     )
     t_maybe_keep_cwl1 >> t_set_dataset_error
     t_maybe_keep_cwl2 >> t_set_dataset_error
     t_maybe_keep_cwl3 >> t_set_dataset_error
-    t_set_dataset_error >> t_join
-    t_join >> t_cleanup_tmpdir
+    t_set_dataset_error >> t_join_salmon
+    t_join_salmon >> t_cleanup_tmpdir
     t_cleanup_tmpdir >> t_terminate_environment
