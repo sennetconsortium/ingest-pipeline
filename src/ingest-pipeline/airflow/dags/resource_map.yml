@@ -42,7 +42,7 @@ resource_map:
     'preserve_scratch': true
     'lanes': 1
     # 'lanes': 12
-    'instance_type': 'r6i.xlarge'
+    'instance_type': 'r6i.2xlarge'
     'tasks':
       - 'task_re': '.*cwl.*|.*exec|.*cmd.*|.*azimuth.*|.*ui.*'
         'queue': 'processing'
@@ -54,7 +54,7 @@ resource_map:
     'preserve_scratch': true
     'lanes': 1
     # 'lanes': 12
-    'instance_type': 'r6i.xlarge'
+    'instance_type': 'r6i.8xlarge'
     'tasks':
       - 'task_re': '.*cwl.*|.*exec|.*cmd.*|.*ui.*'
         'queue': 'processing'
@@ -151,7 +151,7 @@ resource_map:
   - 'dag_re': 'validate_upload'
     'preserve_scratch': true
     'lanes': 1
-    'instance_type': 'r6a.xlarge'
+    'instance_type': 'r6a.4xlarge'
     'tasks':
       - 'task_re': 'run_validation'
         'queue': 'validate'
@@ -196,7 +196,7 @@ resource_map:
   - 'dag_re': '.*multiome'
     'preserve_scratch': true
     'lanes': 1
-    'instance_type': 'r6i.xlarge'
+    'instance_type': 'r6i.4xlarge'
     'tasks':
       - 'task_re': '.*cwl.*|.*exec|.*cmd.*|.*azimuth.*|.*ui.*'
         'queue': 'processing'

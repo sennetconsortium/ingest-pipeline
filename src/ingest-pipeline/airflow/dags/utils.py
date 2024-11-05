@@ -365,23 +365,23 @@ def get_assay_previous_version(**kwargs) -> tuple:
         position 4: pipeline position in workflow array"""
     dataset_type = get_dataname_previous_version(**kwargs).split("__")[0]
     if dataset_type == "salmon_rnaseq_10x":
-        return "10x_v3", "expr.h5ad", "secondary_analysis.h5ad", 1
+        return "10x_v3", "expr.h5ad", "secondary_analysis.h5ad", 0
     if dataset_type == "salmon_rnaseq_10x_sn":
-        return "10x_v3_sn", "expr.h5ad", "secondary_analysis.h5ad", 1
+        return "10x_v3_sn", "expr.h5ad", "secondary_analysis.h5ad", 0
     if dataset_type == "salmon_rnaseq_10x_v2":
-        return "10x_v2", "expr.h5ad", "secondary_analysis.h5ad", 1
+        return "10x_v2", "expr.h5ad", "secondary_analysis.h5ad", 0
     if dataset_type == "salmon_rnaseq_10x_v2_sn":
-        return "10x_v2_sn", "expr.h5ad", "secondary_analysis.h5ad", 1
+        return "10x_v2_sn", "expr.h5ad", "secondary_analysis.h5ad", 0
     if dataset_type == "salmon_rnaseq_sciseq":
-        return "sciseq", "expr.h5ad", "secondary_analysis.h5ad", 1
+        return "sciseq", "expr.h5ad", "secondary_analysis.h5ad", 0
     if dataset_type == "salmon_rnaseq_snareseq":
-        return "snareseq", "expr.h5ad", "secondary_analysis.h5ad", 1
+        return "snareseq", "expr.h5ad", "secondary_analysis.h5ad", 0
     if dataset_type == "salmon_rnaseq_slideseq":
-        return "slideseq", "expr.h5ad", "secondary_analysis.h5ad", 1
+        return "slideseq", "expr.h5ad", "secondary_analysis.h5ad", 0
     if dataset_type == "multiome_10x":
-        return "10x_V3_sn", "mudata_raw.h5mu", "secondary_analysis.h5mu", 3
+        return "10x_V3_sn", "mudata_raw.h5mu", "secondary_analysis.h5mu", 1
     if dataset_type == "multiome_snareseq":
-        return "snareseq", "mudata_raw.h5mu", "secondary_analysis.h5mu", 3
+        return "snareseq", "mudata_raw.h5mu", "secondary_analysis.h5mu", 1
 
 
 def get_parent_dataset_paths_list(**kwargs) -> List[Path]:

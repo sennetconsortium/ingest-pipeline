@@ -41,7 +41,6 @@ from aws_utils import (
     terminate_instance
 )
 
-
 default_args = {
     "owner": "hubmap",
     "depends_on_past": False,
@@ -57,14 +56,14 @@ default_args = {
 }
 
 with HMDAG(
-    "azimuth_annotations",
-    schedule_interval=None,
-    is_paused_upon_creation=False,
-    default_args=default_args,
-    user_defined_macros={
-        "tmp_dir_path": get_tmp_dir_path,
-        "preserve_scratch": get_preserve_scratch_resource("azimuth_annotations"),
-    },
+        "azimuth_annotations",
+        schedule_interval=None,
+        is_paused_upon_creation=False,
+        default_args=default_args,
+        user_defined_macros={
+            "tmp_dir_path": get_tmp_dir_path,
+            "preserve_scratch": get_preserve_scratch_resource("azimuth_annotations"),
+        },
 ) as dag:
     pipeline_name = "azimuth_annotate"
     cwl_workflows_files_salmon = get_absolute_workflows(
@@ -86,7 +85,6 @@ with HMDAG(
     )
     cwl_workflows_annotations_multiome = get_absolute_workflows(
         Path("azimuth-annotate", "pipeline.cwl"),
-        Path("portal-containers", "h5ad-to-arrow.cwl"),
         Path("portal-containers", "mudata-to-ui.cwl"),
     )
 
@@ -95,6 +93,7 @@ with HMDAG(
     prepare_cwl2 = DummyOperator(task_id="prepare_cwl2")
 
     prepare_cwl3 = DummyOperator(task_id="prepare_cwl3")
+
 
     def start_new_environment(**kwargs):
         uuid = kwargs['run_id']
@@ -115,6 +114,7 @@ with HMDAG(
         }
     )
 
+
     def build_cwltool_cmd1(**kwargs):
         run_id = kwargs["run_id"]
         tmpdir = get_tmp_dir_path(run_id)
@@ -129,7 +129,7 @@ with HMDAG(
 
         command = [
             *get_cwltool_base_cmd(tmpdir),
-            cwl_workflows_annotations[0],
+            cwl_workflows_annotations_salmon[0],
             "--reference",
             organ_code,
             "--matrix",
@@ -142,6 +142,7 @@ with HMDAG(
 
         return join_quote_command_str(command)
 
+
     def build_cwltool_cmd2(**kwargs):
         run_id = kwargs["run_id"]
         tmpdir = get_tmp_dir_path(run_id)
@@ -150,15 +151,17 @@ with HMDAG(
 
         command = [
             *get_cwltool_base_cmd(tmpdir),
-            cwl_workflows_annotations[workflow],
+            cwl_workflows_annotations_salmon[1] if workflow == 0 else
+            cwl_workflows_annotations_multiome[1],
             "--input_dir",
             # This pipeline invocation runs in a 'hubmap_ui' subdirectory,
             # so use the parent directory as input
             "..",
         ]
-        kwargs["ti"].xcom_push(key="skip_cwl3", value=1 if workflow == 1 else 0)
+        kwargs["ti"].xcom_push(key="skip_cwl3", value=1 if workflow == 0 else 0)
 
         return join_quote_command_str(command)
+
 
     def build_cwltool_cmd4(**kwargs):
         run_id = kwargs["run_id"]
@@ -167,7 +170,7 @@ with HMDAG(
 
         command = [
             *get_cwltool_base_cmd(tmpdir),
-            cwl_workflows_annotations[2],
+            cwl_workflows_annotations_salmon[2],
             "--input_dir",
             # This pipeline invocation runs in a 'hubmap_ui' subdirectory,
             # so use the parent directory as input
@@ -175,6 +178,7 @@ with HMDAG(
         ]
 
         return join_quote_command_str(command)
+
 
     t_build_cmd1 = PythonOperator(
         task_id="build_cmd1",
@@ -343,7 +347,7 @@ with HMDAG(
     )
 
     t_build_provenance_multiome = PythonOperator(
-        task_id="build_provenance",
+        task_id="build_provenance_multiome",
         python_callable=build_provenance_multiome,
         provide_context=True,
     )
@@ -383,40 +387,41 @@ with HMDAG(
     t_join_salmon = JoinOperator(task_id="join_salmon")
     t_join_multiome = JoinOperator(task_id="join_multiome")
     t_create_tmpdir = CreateTmpDirOperator(task_id="create_tmpdir")
-    t_cleanup_tmpdir = CleanupTmpDirOperator(task_id="cleanup_tmpdir")
+    t_cleanup_tmpdir = CleanupTmpDirOperator(task_id="cleanup_tmpdir", trigger_rule="all_done")
     t_set_dataset_processing = SetDatasetProcessingOperator(task_id="set_dataset_processing")
 
     (
-        t_log_info
-        >> t_create_tmpdir
-        >> t_send_create_dataset
-        >> t_set_dataset_processing
-        >> t_populate_tmpdir
-        >> t_initialize_environment
-        >> prepare_cwl1
-        >> t_build_cmd1
-        >> t_pipeline_exec_azimuth_annotate
-        >> t_maybe_keep_cwl1
-        >> prepare_cwl2
-        >> t_build_cmd2
-        >> t_convert_for_ui
-        >> t_maybe_keep_cwl2
-        >> t_maybe_skip_cwl3
-        >> prepare_cwl3
-        >> t_build_cmd4
-        >> t_convert_for_ui_2
-        >> t_maybe_keep_cwl3
-        >> t_move_data
-        >> t_build_provenance_salmon
-        >> t_send_status_salmon
-        >> t_join_salmon
+            t_log_info
+            >> t_create_tmpdir
+            >> t_send_create_dataset
+            >> t_set_dataset_processing
+            >> t_populate_tmpdir
+            >> t_initialize_environment
+            >> prepare_cwl1
+            >> t_build_cmd1
+            >> t_pipeline_exec_azimuth_annotate
+            >> t_maybe_keep_cwl1
+            >> prepare_cwl2
+            >> t_build_cmd2
+            >> t_convert_for_ui
+            >> t_maybe_keep_cwl2
+            >> t_maybe_skip_cwl3
+            >> prepare_cwl3
+            >> t_build_cmd4
+            >> t_convert_for_ui_2
+            >> t_maybe_keep_cwl3
+            >> t_move_data
+            >> t_build_provenance_salmon
+            >> t_send_status_salmon
+            >> t_join_salmon
     )
     (
-        t_maybe_skip_cwl3
-        >> t_move_data
-        >> t_build_provenance_multiome
-        >> t_send_status_multiome
-        >> t_join_multiome
+            t_maybe_skip_cwl3
+            >> t_move_data
+            >> t_build_provenance_multiome
+            >> t_send_status_multiome
+            >> t_join_multiome
+            >> t_cleanup_tmpdir
     )
     t_maybe_keep_cwl1 >> t_set_dataset_error
     t_maybe_keep_cwl2 >> t_set_dataset_error
