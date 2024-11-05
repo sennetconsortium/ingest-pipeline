@@ -377,9 +377,9 @@ with HMDAG(
         >> t_send_create_dataset
         >> t_set_dataset_processing
         >> t_populate_tmpdir
+        >> t_initialize_environment
         >> prepare_cwl1
         >> t_build_cmd1
-        >> t_initialize_environment
         >> t_pipeline_exec_azimuth_annotate
         >> t_maybe_keep_cwl1
         >> prepare_cwl2
