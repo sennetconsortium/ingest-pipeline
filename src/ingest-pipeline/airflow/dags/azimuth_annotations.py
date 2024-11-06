@@ -263,7 +263,7 @@ with HMDAG(
         python_callable=utils.pythonop_maybe_keep,
         provide_context=True,
         op_kwargs={
-            "next_op": "move_data",
+            "next_op": "move_data_multiome",
             "bail_op": "prepare_cwl3",
             "test_op": "build_cmd2",
             "test_key": "skip_cwl3",
@@ -275,7 +275,7 @@ with HMDAG(
         python_callable=utils.pythonop_maybe_keep,
         provide_context=True,
         op_kwargs={
-            "next_op": "move_data",
+            "next_op": "move_data_salmon",
             "bail_op": "set_dataset_error",
             "test_op": "convert_for_ui_2",
         },
@@ -298,7 +298,6 @@ with HMDAG(
         task_id="set_dataset_error",
         python_callable=utils.pythonop_set_dataset_state,
         provide_context=True,
-        trigger_rule="all_done",
         op_kwargs={
             "dataset_uuid_callable": get_dataset_uuid,
             "ds_state": "Error",
@@ -383,7 +382,8 @@ with HMDAG(
     )
 
     t_log_info = LogInfoOperator(task_id="log_info")
-    t_move_data = MoveDataOperator(task_id="move_data", trigger_rule="all_done")
+    t_move_data_salmon = MoveDataOperator(task_id="move_data_salmon")
+    t_move_data_multiome = MoveDataOperator(task_id="move_data_multiome")
     t_join_salmon = JoinOperator(task_id="join_salmon")
     t_join_multiome = JoinOperator(task_id="join_multiome")
     t_create_tmpdir = CreateTmpDirOperator(task_id="create_tmpdir")
@@ -391,37 +391,37 @@ with HMDAG(
     t_set_dataset_processing = SetDatasetProcessingOperator(task_id="set_dataset_processing")
 
     (
-            t_log_info
-            >> t_create_tmpdir
-            >> t_send_create_dataset
-            >> t_set_dataset_processing
-            >> t_populate_tmpdir
-            >> t_initialize_environment
-            >> prepare_cwl1
-            >> t_build_cmd1
-            >> t_pipeline_exec_azimuth_annotate
-            >> t_maybe_keep_cwl1
-            >> prepare_cwl2
-            >> t_build_cmd2
-            >> t_convert_for_ui
-            >> t_maybe_keep_cwl2
-            >> t_maybe_skip_cwl3
-            >> prepare_cwl3
-            >> t_build_cmd4
-            >> t_convert_for_ui_2
-            >> t_maybe_keep_cwl3
-            >> t_move_data
-            >> t_build_provenance_salmon
-            >> t_send_status_salmon
-            >> t_join_salmon
+        t_log_info
+        >> t_create_tmpdir
+        >> t_send_create_dataset
+        >> t_set_dataset_processing
+        >> t_populate_tmpdir
+        >> t_initialize_environment
+        >> prepare_cwl1
+        >> t_build_cmd1
+        >> t_pipeline_exec_azimuth_annotate
+        >> t_maybe_keep_cwl1
+        >> prepare_cwl2
+        >> t_build_cmd2
+        >> t_convert_for_ui
+        >> t_maybe_keep_cwl2
+        >> t_maybe_skip_cwl3
+        >> prepare_cwl3
+        >> t_build_cmd4
+        >> t_convert_for_ui_2
+        >> t_maybe_keep_cwl3
+        >> t_move_data_salmon
+        >> t_build_provenance_salmon
+        >> t_send_status_salmon
+        >> t_join_salmon
     )
     (
-            t_maybe_skip_cwl3
-            >> t_move_data
-            >> t_build_provenance_multiome
-            >> t_send_status_multiome
-            >> t_join_multiome
-            >> t_cleanup_tmpdir
+        t_maybe_skip_cwl3
+        >> t_move_data_multiome
+        >> t_build_provenance_multiome
+        >> t_send_status_multiome
+        >> t_join_multiome
+        >> t_cleanup_tmpdir
     )
     t_maybe_keep_cwl1 >> t_set_dataset_error
     t_maybe_keep_cwl2 >> t_set_dataset_error
