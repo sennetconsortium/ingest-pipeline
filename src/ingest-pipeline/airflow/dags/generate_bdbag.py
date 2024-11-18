@@ -88,7 +88,7 @@ default_args = {
     'retries': 1,
     'retry_delay': datetime.timedelta(minutes=1),
     'xcom_push': True,
-    "executor_config": {"SlurmExecutor": {"slurm_output_path": "/home/codcc/airflow-logs/slurm/"}},
+    "executor_config": {"SlurmExecutor": {"slurm_output_path": "/home/codcc/airflow-logs/slurm/%x_%N_%j.out"}},
     'queue': get_queue_resource('generate_bdbag'),
 }
 

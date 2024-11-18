@@ -44,7 +44,7 @@ default_args = {
     "retry_delay": timedelta(minutes=1),
     "xcom_push": True,
     "queue": get_queue_resource("celldive_deepcell"),
-    "executor_config": {"SlurmExecutor": {"slurm_output_path": "/home/codcc/airflow-logs/slurm/",
+    "executor_config": {"SlurmExecutor": {"slurm_output_path": "/home/codcc/airflow-logs/slurm/%x_%N_%j.out",
                                           "gpu_params": {
                                               "queue": get_queue_resource("celldive_deepcell",
                                                                           "segmentation"),

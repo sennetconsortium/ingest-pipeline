@@ -30,8 +30,6 @@ from utils import (
     get_queue_resource,
     get_preserve_scratch_resource,
     get_threads_resource,
-    get_instance_type,
-    get_environment_instance
 )
 
 
@@ -47,7 +45,7 @@ default_args = {
     "retry_delay": timedelta(minutes=1),
     "xcom_push": True,
     "queue": get_queue_resource("codex_cytokit"),
-    "executor_config": {"SlurmExecutor": {"slurm_output_path": "/home/codcc/airflow-logs/slurm/",
+    "executor_config": {"SlurmExecutor": {"slurm_output_path": "/home/codcc/airflow-logs/slurm/%x_%N_%j.out",
                                           "gpu_params": {
                                               "queue": get_queue_resource("codex_cytokit", "cwl_cytokit"),
                                           },
