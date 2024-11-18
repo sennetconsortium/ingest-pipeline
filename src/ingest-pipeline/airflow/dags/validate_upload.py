@@ -4,7 +4,6 @@ import json
 import logging
 import os
 import sys
-import urllib.parse as urlparser
 from datetime import datetime, timedelta
 from pathlib import Path
 from pprint import pprint
@@ -109,8 +108,7 @@ with HMDAG(
         app_context = {
             "entities_url": HttpHook.get_connection("entity_api_connection").host + "/entities/",
             "uuid_url": HttpHook.get_connection("uuid_api_connection").host + "/uuid/",
-            "ingest_url": urlparser.unquote(
-                os.environ["AIRFLOW_CONN_INGEST_API_CONNECTION"]).split("http://")[1],
+            "ingest_url": os.environ["AIRFLOW_CONN_INGEST_API_CONNECTION"],
             "request_header": {"X-SenNet-Application": "ingest-pipeline"},
         }
         #
