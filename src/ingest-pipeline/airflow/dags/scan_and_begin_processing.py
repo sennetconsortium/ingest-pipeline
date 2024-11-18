@@ -118,6 +118,7 @@ with HMDAG(
         ignore_globs = [uuid, "extras", "*metadata.tsv", "validation_report.txt"]
         app_context = {
             "entities_url": HttpHook.get_connection("entity_api_connection").host + "/entities/",
+            "uuid_url": HttpHook.get_connection("uuid_api_connection").host + "/uuid/",
             "ingest_url": urlparser.unquote(
                 os.environ["AIRFLOW_CONN_INGEST_API_CONNECTION"]).split("http://")[1],
             "request_header": {"X-SenNet-Application": "ingest-pipeline"},

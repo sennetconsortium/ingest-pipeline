@@ -33,7 +33,6 @@ import cwltool  # used to find its path
 import yaml
 from cryptography.fernet import Fernet
 from hubmap_commons.schema_tools import assert_json_matches_schema, set_schema_base_path
-from hubmap_commons.type_client import TypeClient
 from requests import codes
 from requests.exceptions import HTTPError
 from status_change.status_manager import EntityUpdateException, StatusChanger
@@ -119,7 +118,6 @@ RESOURCE_MAP_FILENAME = "resource_map.yml"  # Expected to be found in this same 
 RESOURCE_MAP_SCHEMA = "resource_map_schema.yml"
 COMPILED_RESOURCE_MAP: Optional[List[Tuple[Pattern, int, Dict[str, Any]]]] = None
 
-TYPE_CLIENT: Optional[TypeClient] = None
 
 # Parameters used to generate scRNA and scATAC analysis DAGs; these
 # are the only fields which differ between assays and DAGs
@@ -327,42 +325,63 @@ def get_dataset_type_organ_based(**kwargs) -> str:
 
 def get_dataset_type_previous_version(**kwargs) -> List[str]:
     dataset_uuid = get_previous_revision_uuid(**kwargs)
+    if dataset_uuid is None:
+        dataset_uuid = kwargs["dag_run"].conf.get("parent_submission_id", [None])[0]
     assert dataset_uuid is not None, "Missing previous_version_uuid"
 
     def my_callable(**kwargs):
         return dataset_uuid
 
     ds_rslt = pythonop_get_dataset_state(dataset_uuid_callable=my_callable, **kwargs)
+    assert ds_rslt["status"] in [
+        "QA",
+        "Published",
+    ], "Current status of dataset is not QA or better"
     return ds_rslt["dataset_type"]
 
 
 def get_dataname_previous_version(**kwargs) -> str:
     dataset_uuid = get_previous_revision_uuid(**kwargs)
+    if dataset_uuid is None:
+        dataset_uuid = kwargs["dag_run"].conf.get("parent_submission_id", [None])[0]
     assert dataset_uuid is not None, "Missing previous_version_uuid"
 
     def my_callable(**kwargs):
         return dataset_uuid
 
     ds_rslt = pythonop_get_dataset_state(dataset_uuid_callable=my_callable, **kwargs)
+    assert ds_rslt["status"] in [
+        "QA",
+        "Published",
+    ], "Current status of dataset is not QA or better"
     return ds_rslt["dataset_info"]
 
 
-def get_assay_previous_version(**kwargs) -> str:
+def get_assay_previous_version(**kwargs) -> tuple:
+    """ Returns information based on previous run to indicate how the re-annotation should process:
+        position 1: Assay indicator for pipeline decision
+        position 2: Matrix file
+        position 3: Secondary analysis file
+        position 4: pipeline position in workflow array"""
     dataset_type = get_dataname_previous_version(**kwargs).split("__")[0]
     if dataset_type == "salmon_rnaseq_10x":
-        return "10x_v3"
+        return "10x_v3", "expr.h5ad", "secondary_analysis.h5ad", 0
     if dataset_type == "salmon_rnaseq_10x_sn":
-        return "10x_v3_sn"
+        return "10x_v3_sn", "expr.h5ad", "secondary_analysis.h5ad", 0
     if dataset_type == "salmon_rnaseq_10x_v2":
-        return "10x_v2"
+        return "10x_v2", "expr.h5ad", "secondary_analysis.h5ad", 0
     if dataset_type == "salmon_rnaseq_10x_v2_sn":
-        return "10x_v2_sn"
+        return "10x_v2_sn", "expr.h5ad", "secondary_analysis.h5ad", 0
     if dataset_type == "salmon_rnaseq_sciseq":
-        return "sciseq"
+        return "sciseq", "expr.h5ad", "secondary_analysis.h5ad", 0
     if dataset_type == "salmon_rnaseq_snareseq":
-        return "snareseq"
+        return "snareseq", "expr.h5ad", "secondary_analysis.h5ad", 0
     if dataset_type == "salmon_rnaseq_slideseq":
-        return "slideseq"
+        return "slideseq", "expr.h5ad", "secondary_analysis.h5ad", 0
+    if dataset_type == "multiome_10x":
+        return "10x_V3_sn", "mudata_raw.h5mu", "secondary_analysis.h5mu", 1
+    if dataset_type == "multiome_snareseq":
+        return "snareseq", "mudata_raw.h5mu", "secondary_analysis.h5mu", 1
 
 
 def get_parent_dataset_paths_list(**kwargs) -> List[Path]:
@@ -799,34 +818,37 @@ def pythonop_send_create_dataset(**kwargs) -> str:
         else:
             dataset_type = kwargs["dataset_type_callable"](**kwargs)
 
+        creation_action = kwargs.get("creation_action", "Central Process")
+
         data = {
             "direct_ancestor_uuids": source_uuids,
             "dataset_info": dataset_name,
-            # This needs to be updated to be the parent's dataset type + the pipeline names
             "dataset_type": dataset_type,
             "group_uuid": parent_group_uuid,
             "contains_human_genetic_sequences": False,
-            "creation_action": "Central Process",
+            "creation_action": creation_action,
         }
         if "previous_revision_uuid_callable" in kwargs:
             previous_revision_uuid = kwargs["previous_revision_uuid_callable"](**kwargs)
             if previous_revision_uuid is not None:
                 data["previous_revision_uuid"] = previous_revision_uuid
-                response = HttpHook("GET", http_conn_id=http_conn_id).run(
-                    endpoint=f"datasets/{previous_revision_uuid}/file-system-abs-path",
-                    headers=headers,
-                    extra_options={"check_response": False},
+                revision_uuid = previous_revision_uuid
+            else:
+                revision_uuid = source_uuids[0]
+            response = HttpHook("GET", http_conn_id=http_conn_id).run(
+                endpoint=f"datasets/{revision_uuid}/file-system-abs-path",
+                headers=headers,
+                extra_options={"check_response": False},
+            )
+            response.raise_for_status()
+            response_json = response.json()
+            if "path" not in response_json:
+                print(f"response from datasets/{revision_uuid}/file-system-abs-path:")
+                pprint(response_json)
+                raise ValueError(
+                    f"datasets/{revision_uuid}/file-system-abs-path did not return a path"
                 )
-                response.raise_for_status()
-                response_json = response.json()
-                if "path" not in response_json:
-                    print(f"response from datasets/{previous_revision_uuid}/file-system-abs-path:")
-                    pprint(response_json)
-                    raise ValueError(
-                        f"datasets/{previous_revision_uuid}/file-system-abs-path"
-                        " did not return a path"
-                    )
-                previous_revision_path = response_json["path"]
+            previous_revision_path = response_json["path"]
 
         print("data for dataset creation:")
         pprint(data)
@@ -955,7 +977,8 @@ def pythonop_get_dataset_state(**kwargs) -> Dict:
         response.raise_for_status()
         ds_rslt = response.json()
         print("ds rslt:")
-        pprint(ds_rslt)
+        # pprint(ds_rslt) temporarily removed due to increasing complexity in the json
+        print(ds_rslt)
     except HTTPError as e:
         print(f"ERROR: {e}")
         if e.response.status_code == codes.unauthorized:
@@ -1237,12 +1260,15 @@ def get_cwltool_base_cmd(tmpdir: Path) -> List[str]:
         # are created as *subdirectories* of 'cwl-tmp' and 'cwl-out-tmp'.
         "--tmpdir-prefix={}/".format(tmpdir / "cwl-tmp"),
         "--tmp-outdir-prefix={}/".format(tmpdir / "cwl-out-tmp"),
+        "--relax-path-checks",
     ]
 
 
 def build_provenance_function(cwl_workflows: List[Path]) -> Callable[..., List]:
     def build_provenance(**kwargs) -> List:
         dataset_uuid = get_previous_revision_uuid(**kwargs)
+        if dataset_uuid is None:
+            dataset_uuid = kwargs["dag_run"].conf.get("parent_submission_id", [None])[0]
         assert dataset_uuid is not None, "Missing previous_version_uuid"
 
         def my_callable(**kwargs):
@@ -1256,7 +1282,7 @@ def build_provenance_function(cwl_workflows: List[Path]) -> Callable[..., List]:
         )
         new_dag_provenance.extend(get_git_provenance_list([*cwl_workflows]))
         for data in ds_rslt["ingest_metadata"]["dag_provenance_list"]:
-            if "salmon" in data["origin"]:
+            if "salmon" in data["origin"] or "multiome" in data["origin"]:
                 new_dag_provenance.append(data)
         kwargs["dag_run"].conf["dag_provenance_list"] = new_dag_provenance
         return kwargs["dag_run"].conf["dag_provenance_list"]
@@ -1406,7 +1432,14 @@ def make_send_status_msg_function(
             # Refactoring metadata structure
             contacts = []
             if metadata_fun:
-                md["files"] = md["metadata"].pop("files_info_alt_path", [])
+                # Always override the value if files_info_alt_path is set, or if md["files"] is empty
+                files_info_alt_path = md["metadata"].pop("files_info_alt_path", [])
+                md["files"] = (
+                    files_info_alt_path
+                    if files_info_alt_path or not md.get("files")
+                    else md["files"]
+                )
+
                 md["extra_metadata"] = {
                     "collectiontype": md["metadata"].pop("collectiontype", None)
                 }
@@ -1474,7 +1507,8 @@ def make_send_status_msg_function(
         entity_type = ds_rslt.get("entity_type")
         if status:
             try:
-                StatusChanger( dataset_uuid,
+                StatusChanger(
+                    dataset_uuid,
                     get_auth_tok(**kwargs),
                     status=status,
                     fields_to_overwrite=extra_fields,
@@ -1669,29 +1703,13 @@ def get_threads_resource(dag_id: str, task_id: Optional[str] = None) -> int:
         return int(rec.get("threads"))
 
 
-def get_type_client() -> TypeClient:
+def get_instance_type(dag_id: str, task_id: Optional[str] = None) -> str:
     """
-    Expose the type client instance publicly
+    Look up for the AWS instance type the dag_id needs to be run with.
     """
-    return _get_type_client()
-
-
-def _get_type_client() -> TypeClient:
-    """
-    Lazy initialization of the global TypeClient instance
-    """
-    global TYPE_CLIENT
-    if TYPE_CLIENT is None:
-        conn = HttpHook.get_connection("search_api_connection")
-        if conn.host.startswith("https"):
-            conn.host = urllib.parse.unquote(conn.host).split("https://")[1]
-            conn.conn_type = "https"
-        if conn.port is None:
-            url = f"{conn.conn_type}://{conn.host}"
-        else:
-            url = f"{conn.conn_type}://{conn.host}:{conn.port}"
-        TYPE_CLIENT = TypeClient(url)
-    return TYPE_CLIENT
+    rec = _lookup_resource_record(dag_id, task_id)
+    assert 'instance_type' in rec, 'schema should guarantee "instance_type" is present?'
+    return rec.get('instance_type')
 
 
 def downstream_workflow_iter(collectiontype: str, assay_type: StrOrListStr) -> Iterable[str]:

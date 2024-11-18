@@ -106,7 +106,6 @@ with HMDAG(
 
         command = [
             *get_cwltool_base_cmd(tmpdir),
-            "--relax-path-checks",
             "--outdir",
             tmpdir / "cwl_out",
             "--parallel",
@@ -123,10 +122,10 @@ with HMDAG(
         command.append(data_dir / "raw/fastq/")
 
         command.append("--img_dir")
-        command.append(data_dir / "lab_processed/images/")
+        command.append(data_dir)
 
         command.append("--metadata_dir")
-        command.append(data_dir / "raw/")
+        command.append(data_dir)
 
         return join_quote_command_str(command)
 
@@ -176,8 +175,9 @@ with HMDAG(
         # this is the call to the CWL
         command = [
             *get_cwltool_base_cmd(tmpdir),
-            "--relax-path-checks",
             cwl_workflows[3],
+            "--processes",
+            get_threads_resource(dag.dag_id),
             "--ometiff_directory",
             data_dir / "lab_processed/images/",
             "--output_filename",

@@ -105,9 +105,9 @@ def generate_salmon_rnaseq_dag(params: SequencingDagParameters) -> DAG:
             else:
                 source_type = unique_source_types.pop().lower()
 
+
             command = [
                 *get_cwltool_base_cmd(tmpdir),
-                "--relax-path-checks",
                 "--outdir",
                 tmpdir / "cwl_out",
                 "--parallel",

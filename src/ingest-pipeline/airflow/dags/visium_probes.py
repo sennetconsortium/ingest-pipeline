@@ -104,7 +104,6 @@ with HMDAG(
 
         command = [
             *get_cwltool_base_cmd(tmpdir),
-            "--relax-path-checks",
             "--outdir",
             tmpdir / "cwl_out",
             "--parallel",
@@ -181,8 +180,9 @@ with HMDAG(
         # this is the call to the CWL
         command = [
             *get_cwltool_base_cmd(tmpdir),
-            "--relax-path-checks",
             cwl_workflows[3],
+            "--processes",
+            get_threads_resource(dag.dag_id),
             "--ometiff_directory",
             data_dir / "lab_processed/images/",
             "--output_filename",
