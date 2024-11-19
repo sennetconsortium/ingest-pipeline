@@ -34,11 +34,6 @@ from utils import (
     get_assay_previous_version,
 )
 
-from aws_utils import (
-    create_instance,
-    terminate_instance
-)
-
 default_args = {
     "owner": "hubmap",
     "depends_on_past": False,
