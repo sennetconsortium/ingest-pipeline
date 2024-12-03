@@ -120,7 +120,8 @@ with HMDAG(
             uuid, dt, lz_path, metadata, prev_version_uuid = check_one_uuid(
                 uuid, prev_version_uuid, avoid_previous_version, collection_type, **kwargs
             )
-            soft_data_assaytype = get_soft_data_assaytype(uuid, **kwargs)
+            soft_data_assaytype = get_soft_data_assaytype(
+                uuid[0] if isinstance(uuid, list) else uuid, **kwargs)
             print(f"Got {soft_data_assaytype} as the soft_data_assaytype for UUID {uuid}")
             filtered_uuid_l.append(
                 {
