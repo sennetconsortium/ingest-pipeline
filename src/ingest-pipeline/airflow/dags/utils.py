@@ -296,6 +296,9 @@ def build_dataset_name(dag_id: str, pipeline_str: str, **kwargs) -> str:
 
 def get_parent_dataset_uuids_list(**kwargs) -> List[str]:
     uuid_list = kwargs["dag_run"].conf["parent_submission_id"]
+    if kwargs["dag"].dag_id == "azimuth_annotations":
+        uuid_list = pythonop_get_dataset_state(dataset_uuid_callable=lambda **kwargs: uuid_list[0],
+                                               **kwargs).get("parent_dataset_uuid_list")
     if not isinstance(uuid_list, list):
         uuid_list = [uuid_list]
     return uuid_list

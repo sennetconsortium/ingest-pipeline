@@ -55,8 +55,7 @@ with HMDAG(
 ) as dag:
 
     def check_one_uuid(
-        uuid: str, previous_version_uuid: str, avoid_previous_version: bool,
-        collection_type: str, **kwargs
+        uuid: str, previous_version_uuid: str, avoid_previous_version: bool, **kwargs
     ):
         """
         Look up information on the given uuid or HuBMAP identifier.
@@ -92,8 +91,7 @@ with HMDAG(
                 previous_version_uuid = previous_uuid
 
         return (
-            ds_rslt["uuid"] if collection_type != "reversioning_annotations" else
-            ds_rslt["parent_dataset_uuid_list"],
+            ds_rslt["uuid"],
             dt,
             ds_rslt["local_directory_full_path"],
             ds_rslt["metadata"],
@@ -118,7 +116,7 @@ with HMDAG(
         filtered_uuid_l = []
         for uuid in uuid_l:
             uuid, dt, lz_path, metadata, prev_version_uuid = check_one_uuid(
-                uuid, prev_version_uuid, avoid_previous_version, collection_type, **kwargs
+                uuid, prev_version_uuid, avoid_previous_version, **kwargs
             )
             soft_data_assaytype = get_soft_data_assaytype(
                 uuid[0] if isinstance(uuid, list) else uuid, **kwargs)
