@@ -932,11 +932,8 @@ def restructure_entity_metadata(raw_metadata: JSONType) -> JSONType:
     de-restructured version can be used by workflows in liu of the original.
     """
     md = {}
-    if "ingest_metadata" in raw_metadata:
-        if "metadata" in raw_metadata["ingest_metadata"]:
-            md["metadata"] = deepcopy(raw_metadata["ingest_metadata"]["metadata"])
-        if "extra_metadata" in raw_metadata["ingest_metadata"]:
-            md.update(raw_metadata["ingest_metadata"]["extra_metadata"])
+    if "metadata" in raw_metadata:
+        md["metadata"] = deepcopy(raw_metadata["metadata"])
     if "contributors" in raw_metadata:
         md["contributors"] = deepcopy(raw_metadata["contributors"])
     if "antibodies" in raw_metadata:
@@ -1405,19 +1402,19 @@ def make_send_status_msg_function(
             if metadata_fun:
                 md["metadata"] = metadata_fun(**kwargs)
 
-            thumbnail_file_abs_path = []
-            if dataset_lz_path_fun:
-                dataset_dir_abs_path = dataset_lz_path_fun(**kwargs)
-                if dataset_dir_abs_path:
-                    #########################################################################
-                    # Added by Zhou 6/16/2021 for registering thumbnail image
-                    # This is the only place that uses this hardcoded extras/thumbnail.jpg
-                    thumbnail_file_abs_path = join(dataset_dir_abs_path, "extras/thumbnail.jpg")
-                    if exists(thumbnail_file_abs_path):
-                        thumbnail_file_abs_path = thumbnail_file_abs_path
-                    else:
-                        thumbnail_file_abs_path = []
-                    #########################################################################
+            # thumbnail_file_abs_path = []
+            # if dataset_lz_path_fun:
+            #     dataset_dir_abs_path = dataset_lz_path_fun(**kwargs)
+            #     if dataset_dir_abs_path:
+            #         #########################################################################
+            #         # Added by Zhou 6/16/2021 for registering thumbnail image
+            #         # This is the only place that uses this hardcoded extras/thumbnail.jpg
+            #         thumbnail_file_abs_path = join(dataset_dir_abs_path, "extras/thumbnail.jpg")
+            #         if exists(thumbnail_file_abs_path):
+            #             thumbnail_file_abs_path = thumbnail_file_abs_path
+            #         else:
+            #             thumbnail_file_abs_path = []
+            #         #########################################################################
 
             manifest_files = find_pipeline_manifests(cwl_workflows)
             if include_file_metadata and ds_dir is not None and not ds_dir == "":
@@ -1443,9 +1440,10 @@ def make_send_status_msg_function(
                 md["extra_metadata"] = {
                     "collectiontype": md["metadata"].pop("collectiontype", None)
                 }
-                md["thumbnail_file_abs_path"] = thumbnail_file_abs_path
+                # md["thumbnail_file_abs_path"] = thumbnail_file_abs_path
                 antibodies = md["metadata"].pop("antibodies", [])
                 contributors = md["metadata"].pop("contributors", [])
+                md["calculated_metadata"] = md["metadata"].pop("calculated_metadata", {})
                 md["metadata"] = md["metadata"].pop("metadata", [])
                 for contrib in contributors:
                     if "is_contact" in contrib:
@@ -1470,8 +1468,12 @@ def make_send_status_msg_function(
 
             try:
                 assert_json_matches_schema(md, "dataset_metadata_schema.yml")
+                metadata = md.pop("metadata", [])
+                files = md.pop("files", [])
                 extra_fields = {
                     "pipeline_message": "the process ran",
+                    "metadata": metadata,
+                    "files": files,
                     "ingest_metadata": md,
                 }
                 if metadata_fun:
@@ -1491,7 +1493,7 @@ def make_send_status_msg_function(
                 extra_fields = {
                     "status": "Error",
                     "pipeline_message": "internal error; schema violation: {}".format(e),
-                    "ingest_metadata": {},
+                    "metadata": {},
                 }
                 return_status = False
         else:
@@ -1701,15 +1703,6 @@ def get_threads_resource(dag_id: str, task_id: Optional[str] = None) -> int:
         )
     else:
         return int(rec.get("threads"))
-
-
-def get_instance_type(dag_id: str, task_id: Optional[str] = None) -> str:
-    """
-    Look up for the AWS instance type the dag_id needs to be run with.
-    """
-    rec = _lookup_resource_record(dag_id, task_id)
-    assert 'instance_type' in rec, 'schema should guarantee "instance_type" is present?'
-    return rec.get('instance_type')
 
 
 def downstream_workflow_iter(collectiontype: str, assay_type: StrOrListStr) -> Iterable[str]:
