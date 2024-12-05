@@ -296,6 +296,9 @@ def build_dataset_name(dag_id: str, pipeline_str: str, **kwargs) -> str:
 
 def get_parent_dataset_uuids_list(**kwargs) -> List[str]:
     uuid_list = kwargs["dag_run"].conf["parent_submission_id"]
+    if kwargs["dag"].dag_id == "azimuth_annotations":
+        uuid_list = pythonop_get_dataset_state(dataset_uuid_callable=lambda **kwargs: uuid_list[0],
+                                               **kwargs).get("parent_dataset_uuid_list")
     if not isinstance(uuid_list, list):
         uuid_list = [uuid_list]
     return uuid_list
@@ -834,7 +837,7 @@ def pythonop_send_create_dataset(**kwargs) -> str:
                 data["previous_revision_uuid"] = previous_revision_uuid
                 revision_uuid = previous_revision_uuid
             else:
-                revision_uuid = source_uuids[0]
+                revision_uuid = kwargs["dag_run"].conf["parent_submission_id"][0]
             response = HttpHook("GET", http_conn_id=http_conn_id).run(
                 endpoint=f"datasets/{revision_uuid}/file-system-abs-path",
                 headers=headers,
