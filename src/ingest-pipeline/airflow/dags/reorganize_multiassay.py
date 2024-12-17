@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 from pprint import pprint
 from datetime import datetime, timedelta
@@ -27,6 +28,7 @@ from utils import (
     HMDAG,
     get_queue_resource,
     get_preserve_scratch_resource,
+    get_local_vm,
 )
 
 from extra_utils import get_component_uuids
@@ -44,7 +46,8 @@ default_args = {
     "email_on_retry": False,
     "retries": 1,
     "retry_delay": timedelta(minutes=1),
-    "executor_config": {"SlurmExecutor": {"slurm_output_path": "/home/codcc/airflow-logs/slurm/%x_%N_%j.out"}},
+    "executor_config": {"SlurmExecutor": {"slurm_output_path": "/home/codcc/airflow-logs/slurm/%x_%N_%j.out",
+                                          "cpu_nodes": get_local_vm(os.environ["AIRFLOW_CONN_INGEST_API_CONNECTION"])}},
     "queue": get_queue_resource("reorganize_upload"),
 }
 

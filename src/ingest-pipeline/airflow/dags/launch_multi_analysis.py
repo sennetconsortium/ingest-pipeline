@@ -1,4 +1,5 @@
 import ast
+import os
 from pprint import pprint
 from datetime import datetime, timedelta
 
@@ -16,6 +17,7 @@ from utils import (
     get_preserve_scratch_resource,
     get_soft_data_assaytype,
     get_auth_tok,
+    get_local_vm,
 )
 
 from extra_utils import check_link_published_drvs
@@ -39,7 +41,8 @@ default_args = {
     "retry_delay": timedelta(minutes=1),
     "xcom_push": True,
     "queue": get_queue_resource("launch_multi_analysis"),
-    "executor_config": {"SlurmExecutor": {"slurm_output_path": "/home/codcc/airflow-logs/slurm/%x_%N_%j.out"}},
+    "executor_config": {"SlurmExecutor": {"slurm_output_path": "/home/codcc/airflow-logs/slurm/%x_%N_%j.out",
+                                          "cpu_nodes": get_local_vm(os.environ["AIRFLOW_CONN_INGEST_API_CONNECTION"])}},
     "on_failure_callback": utils.create_dataset_state_error_callback(get_uuid_for_error),
 }
 
