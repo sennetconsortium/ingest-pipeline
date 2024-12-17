@@ -4,7 +4,7 @@ import os
 import re
 import shlex
 import sys
-import urllib.parse
+from urllib.parse import urlsplit
 import uuid
 from abc import ABC, abstractmethod
 from collections import namedtuple
@@ -1665,6 +1665,10 @@ def get_queue_resource(dag_id: str, task_id: Optional[str] = None) -> str:
     rec = _lookup_resource_record(dag_id, task_id)
     assert "queue" in rec, 'schema should guarantee "queue" is present?'
     return map_queue_name(rec["queue"])
+
+
+def get_local_vm(server: str) -> str:
+    return urlsplit(server).netloc.split(".")[0]
 
 
 def get_lanes_resource(dag_id: str) -> int:

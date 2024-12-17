@@ -22,6 +22,7 @@ from utils import (
     get_threads_resource,
     get_tmp_dir_path,
     pythonop_get_dataset_state,
+    get_local_vm,
 )
 
 from airflow.configuration import conf as airflow_conf
@@ -97,6 +98,8 @@ with HMDAG(
         task_id="find_uuid",
         python_callable=find_uuid,
         provide_context=True,
+        executor_config={"SlurmExecutor": {"slurm_output_path": "/home/codcc/airflow-logs/slurm/%x_%N_%j.out",
+                                           "cpu_nodes": get_local_vm(os.environ["AIRFLOW_CONN_INGEST_API_CONNECTION"])}},
     )
 
     def run_validation(**kwargs):
@@ -185,10 +188,24 @@ with HMDAG(
         task_id="send_status",
         python_callable=send_status_msg,
         provide_context=True,
+        executor_config={
+            "SlurmExecutor": {"slurm_output_path": "/home/codcc/airflow-logs/slurm/%x_%N_%j.out",
+                              "cpu_nodes": get_local_vm(
+                                  os.environ["AIRFLOW_CONN_INGEST_API_CONNECTION"])}},
     )
 
-    t_create_tmpdir = CreateTmpDirOperator(task_id="create_temp_dir")
-    t_cleanup_tmpdir = CleanupTmpDirOperator(task_id="cleanup_temp_dir")
+    t_create_tmpdir = CreateTmpDirOperator(task_id="create_temp_dir",
+                                           executor_config={"SlurmExecutor": {
+                                               "slurm_output_path": "/home/codcc/airflow-logs/slurm/%x_%N_%j.out",
+                                               "cpu_nodes": get_local_vm(os.environ[
+                                                                             "AIRFLOW_CONN_INGEST_API_CONNECTION"])}},
+                                           )
+    t_cleanup_tmpdir = CleanupTmpDirOperator(task_id="cleanup_temp_dir",
+                                             executor_config={"SlurmExecutor": {
+                                                 "slurm_output_path": "/home/codcc/airflow-logs/slurm/%x_%N_%j.out",
+                                                 "cpu_nodes": get_local_vm(os.environ[
+                                                                               "AIRFLOW_CONN_INGEST_API_CONNECTION"])}},
+                                             )
 
     (
         t_create_tmpdir
