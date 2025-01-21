@@ -129,6 +129,18 @@ resource_map:
       - 'task_re': '.*'
         'queue': 'general'
         'threads': 6
+  - 'dag_re': 'ometiff_pyramid'
+    'preserve_scratch': true
+    'lanes': 1
+    # 'lanes': 6
+    'instance_type': 'r6i.2xlarge'
+    'tasks':
+      - 'task_re': '.*cwl.*|.*cmd.*'
+        'queue': 'processing'
+        'threads': 6
+      - 'task_re': '.*'
+        'queue': 'general'
+        'threads': 6
   - 'dag_re': 'launch_checksums'
     'preserve_scratch': true
     'lanes': 1
