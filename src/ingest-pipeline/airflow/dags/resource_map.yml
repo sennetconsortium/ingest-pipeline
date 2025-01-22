@@ -117,7 +117,7 @@ resource_map:
       - 'task_re': '.*'
         'queue': 'general'
         'threads': 6
-  - 'dag_re': 'ometiff_pyramid'
+  - 'dag_re': 'geomx'
     'preserve_scratch': true
     'lanes': 1
     # 'lanes': 6
