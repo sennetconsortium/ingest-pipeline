@@ -123,7 +123,7 @@ resource_map:
     # 'lanes': 6
     'instance_type': 'r6i.2xlarge'
     'tasks':
-      - 'task_re': '.*cwl.*|.*cmd.*'
+      - 'task_re': '.*cwl.*|.*cmd.*|.*exec'
         'queue': 'processing'
         'threads': 6
       - 'task_re': '.*'
