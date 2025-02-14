@@ -184,7 +184,6 @@ with HMDAG(
                                    executor_config={"SlurmExecutor": {
                                        "slurm_output_path": "/home/codcc/airflow-logs/slurm/%x_%N_%j.out",
                                        "cpu_nodes": get_local_vm(os.environ["AIRFLOW_CONN_INGEST_API_CONNECTION"])}},)
-
     (
         t_log_info
         >> t_create_tmpdir

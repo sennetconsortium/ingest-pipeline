@@ -46,6 +46,18 @@ resource_map:
       - 'task_re': '.*'
         'queue': 'APPS'
         'threads': 6
+  - 'dag_re': 'geomx'
+    'preserve_scratch': true
+    'lanes': 1
+    # 'lanes': 6
+    'instance_type': 'r6i.2xlarge'
+    'tasks':
+      - 'task_re': '.*cwl.*|.*cmd.*|.*exec'
+        'queue': 'processing'
+        'threads': 6
+      - 'task_re': '.*'
+        'queue': 'general'
+        'threads': 6
   - 'dag_re': 'ometiff_pyramid'
     'preserve_scratch': true
     'lanes': 1
