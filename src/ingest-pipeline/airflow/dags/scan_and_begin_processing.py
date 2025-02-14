@@ -1,7 +1,6 @@
 import os
 import sys
 import inspect
-import urllib.parse as urlparser
 from datetime import datetime, timedelta
 from pathlib import Path
 from pprint import pprint
@@ -22,14 +21,8 @@ from utils import (
     make_send_status_msg_function,
     pythonop_get_dataset_state,
     pythonop_maybe_keep,
-    get_instance_type,
     get_threads_resource,
-    get_environment_instance,
-)
-
-from aws_utils import (
-    create_instance,
-    terminate_instance
+    get_local_vm,
 )
 
 from airflow.configuration import conf as airflow_conf
@@ -71,6 +64,7 @@ default_args = {
     "retry_delay": timedelta(minutes=1),
     "xcom_push": True,
     "queue": get_queue_resource("scan_and_begin_processing"),
+    "executor_config": {"SlurmExecutor": {"slurm_output_path": "/home/codcc/airflow-logs/slurm/%x_%N_%j.out"}},
     "on_failure_callback": utils.create_dataset_state_error_callback(get_dataset_uuid),
 }
 
@@ -85,26 +79,6 @@ with HMDAG(
         "preserve_scratch": get_preserve_scratch_resource("scan_and_begin_processing"),
     },
 ) as dag:
-    def start_new_environment(**kwargs):
-        uuid = kwargs["dag_run"].conf["submission_id"]
-        instance_id = create_instance(uuid, f"Airflow {get_environment_instance()} Worker",
-                                      get_instance_type(kwargs["dag_run"].conf["dag_id"]))
-        if instance_id is None:
-            return 1
-        else:
-            kwargs["ti"].xcom_push(key="instance_id", value=instance_id)
-            return 0
-
-
-    t_initialize_environment = PythonOperator(
-        task_id="initialize_environment",
-        python_callable=start_new_environment,
-        provide_context=True,
-        op_kwargs={
-        }
-    )
-
-
     def read_metadata_file(**kwargs):
         md_fname = os.path.join(utils.get_tmp_dir_path(kwargs["run_id"]), "rslt.yml")
         with open(md_fname, "r") as f:
@@ -145,8 +119,7 @@ with HMDAG(
         app_context = {
             "entities_url": HttpHook.get_connection("entity_api_connection").host + "/entities/",
             "uuid_url": HttpHook.get_connection("uuid_api_connection").host + "/uuid/",
-            "ingest_url": urlparser.unquote(
-                os.environ["AIRFLOW_CONN_INGEST_API_CONNECTION"]).split("http://")[1],
+            "ingest_url": os.environ["AIRFLOW_CONN_INGEST_API_CONNECTION"],
             "request_header": {"X-SenNet-Application": "ingest-pipeline"},
         }
         #
@@ -223,6 +196,10 @@ with HMDAG(
             "bail_op": "send_status_msg",
             "test_op": "run_validation",
         },
+        executor_config={
+            "SlurmExecutor": {"slurm_output_path": "/home/codcc/airflow-logs/slurm/%x_%N_%j.out",
+                              "cpu_nodes": get_local_vm(
+                                  os.environ["AIRFLOW_CONN_INGEST_API_CONNECTION"])}},
     )
 
     t_run_md_extract = BashOperator(
@@ -255,6 +232,10 @@ with HMDAG(
             "PYTHON_EXE": os.environ["CONDA_PREFIX"] + "/bin/python",
             "INGEST_API_URL": os.environ["AIRFLOW_CONN_INGEST_API_CONNECTION"],
         },
+        executor_config={
+            "SlurmExecutor": {"slurm_output_path": "/home/codcc/airflow-logs/slurm/%x_%N_%j.out",
+                              "cpu_nodes": get_local_vm(
+                                  os.environ["AIRFLOW_CONN_INGEST_API_CONNECTION"])}},
     )
 
     t_md_consistency_tests = PythonOperator(
@@ -262,6 +243,10 @@ with HMDAG(
         python_callable=utils.pythonop_md_consistency_tests,
         provide_context=True,
         op_kwargs={"metadata_fname": "rslt.yml"},
+        executor_config={
+            "SlurmExecutor": {"slurm_output_path": "/home/codcc/airflow-logs/slurm/%x_%N_%j.out",
+                              "cpu_nodes": get_local_vm(
+                                  os.environ["AIRFLOW_CONN_INGEST_API_CONNECTION"])}},
     )
 
     t_send_status = PythonOperator(
@@ -269,10 +254,24 @@ with HMDAG(
         python_callable=wrapped_send_status_msg,
         provide_context=True,
         trigger_rule="all_done",
+        executor_config={
+            "SlurmExecutor": {"slurm_output_path": "/home/codcc/airflow-logs/slurm/%x_%N_%j.out",
+                              "cpu_nodes": get_local_vm(
+                                  os.environ["AIRFLOW_CONN_INGEST_API_CONNECTION"])}},
     )
 
-    t_create_tmpdir = CreateTmpDirOperator(task_id="create_temp_dir")
-    t_cleanup_tmpdir = CleanupTmpDirOperator(task_id="cleanup_temp_dir")
+    t_create_tmpdir = CreateTmpDirOperator(task_id="create_temp_dir",
+                                           executor_config={"SlurmExecutor": {
+                                               "slurm_output_path": "/home/codcc/airflow-logs/slurm/%x_%N_%j.out",
+                                               "cpu_nodes": get_local_vm(os.environ[
+                                                                             "AIRFLOW_CONN_INGEST_API_CONNECTION"])}},
+                                           )
+    t_cleanup_tmpdir = CleanupTmpDirOperator(task_id="cleanup_temp_dir",
+                                             executor_config={"SlurmExecutor": {
+                                                 "slurm_output_path": "/home/codcc/airflow-logs/slurm/%x_%N_%j.out",
+                                                 "cpu_nodes": get_local_vm(os.environ[
+                                                                               "AIRFLOW_CONN_INGEST_API_CONNECTION"])}},
+                                             )
 
     def flex_maybe_spawn(**kwargs):
         """
@@ -319,30 +318,15 @@ with HMDAG(
         dag=dag,
         trigger_dag_id="scan_and_begin_processing",
         python_callable=flex_maybe_spawn,
+        executor_config={
+            "SlurmExecutor": {"slurm_output_path": "/home/codcc/airflow-logs/slurm/%x_%N_%j.out",
+                              "cpu_nodes": get_local_vm(
+                                  os.environ["AIRFLOW_CONN_INGEST_API_CONNECTION"])}},
     )
 
-
-    def terminate_new_environment(**kwargs):
-        instance_id = kwargs["ti"].xcom_pull(key="instance_id", task_ids="initialize_environment")
-        if instance_id is None:
-            return 1
-        else:
-            uuid = kwargs["dag_run"].conf["submission_id"]
-            terminate_instance(instance_id, uuid)
-        return 0
-
-
-    t_terminate_environment = PythonOperator(
-        task_id="terminate_environment",
-        python_callable=terminate_new_environment,
-        provide_context=True,
-        op_kwargs={
-        }
-    )
 
     (
-            t_initialize_environment
-            >> t_create_tmpdir
+            t_create_tmpdir
             >> t_run_validation
             >> t_maybe_continue
             >> t_run_md_extract
@@ -350,8 +334,6 @@ with HMDAG(
             >> t_send_status
             >> t_maybe_spawn
             >> t_cleanup_tmpdir
-            >> t_terminate_environment
     )
 
     t_maybe_continue >> t_send_status
-    t_send_status >> t_terminate_environment

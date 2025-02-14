@@ -30,14 +30,8 @@ from utils import (
     get_queue_resource,
     get_preserve_scratch_resource,
     get_threads_resource,
-    get_instance_type,
-    get_environment_instance
 )
 
-from aws_utils import (
-    create_instance,
-    terminate_instance
-)
 
 
 default_args = {
@@ -51,6 +45,11 @@ default_args = {
     "retry_delay": timedelta(minutes=1),
     "xcom_push": True,
     "queue": get_queue_resource("codex_cytokit"),
+    "executor_config": {"SlurmExecutor": {"slurm_output_path": "/home/codcc/airflow-logs/slurm/%x_%N_%j.out",
+                                          "gpu_params": {
+                                              "queue": get_queue_resource("codex_cytokit", "cwl_cytokit"),
+                                          },
+                                          }},
     "on_failure_callback": utils.create_dataset_state_error_callback(get_uuid_for_error),
 }
 
@@ -80,24 +79,6 @@ with HMDAG(
     )
 
 
-    def start_new_environment(**kwargs):
-        uuid = kwargs['run_id']
-        instance_id = create_instance(uuid, f'Airflow {get_environment_instance()} Worker',
-                                      get_instance_type(dag.dag_id))
-        if instance_id is None:
-            return 1
-        else:
-            kwargs['ti'].xcom_push(key='instance_id', value=instance_id)
-            return 0
-
-
-    t_initialize_environment = PythonOperator(
-        task_id='initialize_environment',
-        python_callable=start_new_environment,
-        provide_context=True,
-        op_kwargs={
-        }
-    )
 
     def build_dataset_name(**kwargs):
         return inner_build_dataset_name(dag.dag_id, pipeline_name, **kwargs)
@@ -151,27 +132,7 @@ with HMDAG(
         },
     )
 
-    def start_new_gpu_environment(**kwargs):
-        uuid = get_dataset_uuid(**kwargs)
-        instance_id = create_instance(uuid, f"GPU {get_environment_instance()} Worker",
-                                      get_instance_type(dag.dag_id,
-                                                        kwargs["task"].task_id))
-        if instance_id is None:
-            return 1
-        else:
-            kwargs["ti"].xcom_push(key="instance_id", value=instance_id)
-            return 0
-
-
-    t_initialize_environment_gpu = PythonOperator(
-        task_id="initialize_environment_gpu",
-        python_callable=start_new_gpu_environment,
-        provide_context=True,
-        op_kwargs={
-        }
-    )
-
-    prepare_cwl_cytokit = DummyOperator(task_id="prepare_cwl_cytokit")
+    prepare_cwl_cytokit = DummyOperator(task_id='prepare_cwl_cytokit')
 
     def build_cwltool_cwl_cytokit(**kwargs):
         run_id = kwargs["run_id"]
@@ -217,24 +178,6 @@ with HMDAG(
             "bail_op": "set_dataset_error",
             "test_op": "pipeline_exec_cwl_cytokit",
         },
-    )
-
-    def terminate_new_gpu_environment(**kwargs):
-        instance_id = kwargs["ti"].xcom_pull(key="instance_id", task_ids="initialize_environment_gpu")
-        if instance_id is None:
-            return 1
-        else:
-            uuid = get_dataset_uuid(**kwargs)
-            terminate_instance(instance_id, uuid)
-        return 0
-
-
-    t_terminate_environment_gpu = PythonOperator(
-        task_id="terminate_environment_gpu",
-        python_callable=terminate_new_gpu_environment,
-        provide_context=True,
-        op_kwargs={
-        }
     )
 
     prepare_cwl_ometiff_second_stitching = DummyOperator(
@@ -700,24 +643,6 @@ with HMDAG(
         task_id="send_status_msg", python_callable=send_status_msg, provide_context=True
     )
 
-    def terminate_new_environment(**kwargs):
-        instance_id = kwargs["ti"].xcom_pull(key="instance_id", task_ids="initialize_environment")
-        if instance_id is None:
-            return 1
-        else:
-            uuid = kwargs["run_id"]
-            terminate_instance(instance_id, uuid)
-        return 0
-
-
-    t_terminate_environment = PythonOperator(
-        task_id="terminate_environment",
-        python_callable=terminate_new_environment,
-        provide_context=True,
-        op_kwargs={
-        }
-    )
-
     t_log_info = LogInfoOperator(task_id="log_info")
     t_join = JoinOperator(task_id="join")
     t_create_tmpdir = CreateTmpDirOperator(task_id="create_tmpdir")
@@ -730,18 +655,15 @@ with HMDAG(
         >> t_create_tmpdir
         >> t_send_create_dataset
         >> t_set_dataset_processing
-        >> t_initialize_environment
 
         >> prepare_cwl_illumination_first_stitching
         >> t_build_cwl_illumination_first_stitching
         >> t_pipeline_exec_cwl_illumination_first_stitching
         >> t_maybe_keep_cwl_illumination_first_stitching
 
-        >> t_initialize_environment_gpu
         >> prepare_cwl_cytokit
         >> t_build_cwl_cytokit
         >> t_pipeline_exec_cwl_cytokit
-        >> t_terminate_environment_gpu
         >> t_maybe_keep_cwl_cytokit
 
         >> prepare_cwl_ometiff_second_stitching
@@ -788,7 +710,6 @@ with HMDAG(
         >> t_expand_symlinks
         >> t_send_status
         >> t_join
-        >> t_terminate_environment
     )
     t_pipeline_exec_cwl_ometiff_second_stitching >> t_delete_internal_pipeline_files
     t_maybe_keep_cwl_illumination_first_stitching >> t_set_dataset_error
@@ -803,4 +724,3 @@ with HMDAG(
     t_maybe_keep_cwl_sprm_to_anndata >> t_set_dataset_error
     t_set_dataset_error >> t_join
     t_join >> t_cleanup_tmpdir
-    t_cleanup_tmpdir >> t_terminate_environment
