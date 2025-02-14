@@ -273,7 +273,6 @@ with HMDAG(
                                            os.environ["AIRFLOW_CONN_INGEST_API_CONNECTION"])}},
                                    )
 
-
     # DAG
     (
         t_log_info

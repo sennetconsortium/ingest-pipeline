@@ -1,5 +1,4 @@
 import os
-
 from pathlib import Path
 from datetime import datetime, timedelta
 
@@ -31,9 +30,7 @@ from utils import (
     get_tmp_dir_path,
     HMDAG,
     get_queue_resource,
-    get_threads_resource,
     get_preserve_scratch_resource,
-    pythonop_get_dataset_state,
     get_local_vm,
 )
 
@@ -47,29 +44,25 @@ default_args = {
     "retries": 1,
     "retry_delay": timedelta(minutes=1),
     "xcom_push": True,
-    "queue": get_queue_resource("salmon_rnaseq_bulk"),
-    "executor_config": {"SlurmExecutor": {"slurm_output_path": "/home/codcc/airflow-logs/slurm/%x_%N_%j.out"}},
+    "queue": get_queue_resource("geomx"),
     "on_failure_callback": utils.create_dataset_state_error_callback(get_uuid_for_error),
 }
 
 
-def get_organism_name() -> str:
-    return "human"
-
-
 with HMDAG(
-    "salmon_rnaseq_bulk",
+    "geomx",
     schedule_interval=None,
     is_paused_upon_creation=False,
     default_args=default_args,
     user_defined_macros={
         "tmp_dir_path": get_tmp_dir_path,
-        "preserve_scratch": get_preserve_scratch_resource("salmon_rnaseq_bulk"),
+        "preserve_scratch": get_preserve_scratch_resource("geomx"),
     },
 ) as dag:
-    pipeline_name = "salmon-rnaseq-bulk"
+
+    pipeline_name = "geomx"
     cwl_workflows = get_absolute_workflows(
-        Path("salmon-rnaseq", "bulk-pipeline.cwl"),
+        Path("geomx-pipeline", "pipeline.cwl"),
     )
 
     def build_dataset_name(**kwargs):
@@ -82,35 +75,15 @@ with HMDAG(
         tmpdir = get_tmp_dir_path(run_id)
         data_dir = get_parent_data_dir(**kwargs)
 
-        source_type = ""
-        unique_source_types = set()
-        for parent_uuid in get_parent_dataset_uuids_list(**kwargs):
-            dataset_state = pythonop_get_dataset_state(
-                dataset_uuid_callable=lambda **kwargs: parent_uuid, **kwargs
-            )
-            source_type = dataset_state.get("source_type")
-            if source_type == "mixed":
-                print("Force failure. Should only be one unique source_type for a dataset.")
-            else:
-                unique_source_types.add(source_type)
-
-        if len(unique_source_types) > 1:
-            print("Force failure. Should only be one unique source_type for a dataset.")
-        else:
-            source_type = unique_source_types.pop().lower()
-
         command = [
             *get_cwltool_base_cmd(tmpdir),
+            "--relax-path-checks",
             "--outdir",
             tmpdir / "cwl_out",
             "--parallel",
             cwl_workflows[0],
-            "--fastq_dir",
+            "--data_dir",
             data_dir,
-            "--threads",
-            get_threads_resource(dag.dag_id),
-            "--organism",
-            source_type,
         ]
 
         return join_quote_command_str(command)
@@ -150,7 +123,7 @@ with HMDAG(
             "http_conn_id": "ingest_api_connection",
             "previous_revision_uuid_callable": get_previous_revision_uuid,
             "dataset_name_callable": build_dataset_name,
-            "pipeline_shorthand": "Salmon",
+            "pipeline_shorthand": "AnnData",
         },
         executor_config={"SlurmExecutor": {
             "slurm_output_path": "/home/codcc/airflow-logs/slurm/%x_%N_%j.out",
@@ -213,17 +186,17 @@ with HMDAG(
                                        "cpu_nodes": get_local_vm(os.environ["AIRFLOW_CONN_INGEST_API_CONNECTION"])}},)
 
     (
-            t_log_info
-            >> t_create_tmpdir
-            >> t_send_create_dataset
-            >> t_set_dataset_processing
-            >> prepare_cwl1
-            >> t_build_cmd1
-            >> t_pipeline_exec
-            >> t_maybe_keep_cwl1
-            >> t_move_data
-            >> t_send_status
-            >> t_join
+        t_log_info
+        >> t_create_tmpdir
+        >> t_send_create_dataset
+        >> t_set_dataset_processing
+        >> prepare_cwl1
+        >> t_build_cmd1
+        >> t_pipeline_exec
+        >> t_maybe_keep_cwl1
+        >> t_move_data
+        >> t_send_status
+        >> t_join
     )
     t_maybe_keep_cwl1 >> t_set_dataset_error
     t_set_dataset_error >> t_join
