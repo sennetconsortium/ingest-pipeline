@@ -1,13 +1,6 @@
 import os
-import yaml
-import utils
-from pprint import pprint
 
-from airflow.operators.bash import BashOperator
-from airflow.operators.python import PythonOperator
 from airflow.operators.empty import EmptyOperator
-from airflow.exceptions import AirflowException
-from airflow.configuration import conf as airflow_conf
 from datetime import datetime, timedelta
 
 from utils import (
@@ -15,17 +8,8 @@ from utils import (
     get_queue_resource,
     get_preserve_scratch_resource,
     create_dataset_state_error_callback,
-    pythonop_md_consistency_tests,
-    make_send_status_msg_function,
     get_tmp_dir_path,
-    localized_assert_json_matches_schema as assert_json_matches_schema,
-    pythonop_get_dataset_state,
-    encrypt_tok,
-)
-
-from hubmap_operators.common_operators import (
-    CreateTmpDirOperator,
-    CleanupTmpDirOperator,
+    get_local_vm,
 )
 
 
@@ -56,6 +40,8 @@ default_args = {
     'retry_delay': timedelta(minutes=1),
     'xcom_push': True,
     'queue': get_queue_resource('rebuild_metadata'),
+    "executor_config": {"SlurmExecutor": {"slurm_output_path": "/home/codcc/airflow-logs/slurm/%x_%N_%j.out",
+                                          "cpu_nodes": get_local_vm(os.environ["AIRFLOW_CONN_INGEST_API_CONNECTION"])}},
     'on_failure_callback': create_dataset_state_error_callback(get_uuid_for_error)
 }
 

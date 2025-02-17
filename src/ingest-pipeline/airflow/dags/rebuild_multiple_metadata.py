@@ -1,3 +1,5 @@
+import os
+
 from pprint import pprint
 
 from airflow.operators.python import PythonOperator
@@ -13,6 +15,7 @@ from utils import (
     get_tmp_dir_path,
     encrypt_tok,
     pythonop_get_dataset_state,
+    get_local_vm,
 )
 
 
@@ -25,6 +28,8 @@ def get_uuid_for_error(**kwargs):
 
 default_args = {
     "start_date": datetime(2019, 1, 1),
+    "executor_config": {"SlurmExecutor": {"slurm_output_path": "/home/codcc/airflow-logs/slurm/%x_%N_%j.out",
+                                          "cpu_nodes": get_local_vm(os.environ["AIRFLOW_CONN_INGEST_API_CONNECTION"])}},
 }
 
 with DAG(

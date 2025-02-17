@@ -6,7 +6,7 @@ import globus_sdk
 from airflow.configuration import conf
 from airflow import configuration
 from airflow.utils.log.logging_mixin import LoggingMixin
-from airflow.www.security import AirflowSecurityManager
+from airflow.providers.fab.auth_manager.security_manager.override import FabAirflowSecurityManagerOverride
 from flask import flash, g, url_for, request
 from flask_appbuilder import expose
 from flask_appbuilder._compat import as_unicode
@@ -56,10 +56,13 @@ class CustomOAuthView(AuthOAuthView):
     @expose("/login/", methods=["GET", "POST"])
     def login(self):
         if g.user is not None and g.user.is_authenticated:
-            return redirect(self.appbuilder.get_url_for_index)
-        redirect_url = url_for('.login', _external=True, _scheme=get_config_param('scheme')).rstrip('/')
+            url_static = get_config_param("server_url").strip('"') + "/home"
+            # url_flask = self.appbuilder.get_url_for_index
+            return redirect(url_static)
+        # redirect_url = url_for('.login', _external=True, _scheme=get_config_param('scheme')).rstrip('/')
+        redirect_url_static = get_config_param("server_url").strip('"') + "/login"
 
-        self.globus_oauth.oauth2_start_flow(redirect_url)
+        self.globus_oauth.oauth2_start_flow(redirect_url_static)
 
         if 'code' not in request.args:
             auth_uri = self.globus_oauth.oauth2_get_authorize_url(query_params={
@@ -73,7 +76,8 @@ class CustomOAuthView(AuthOAuthView):
                 tokens = self.globus_oauth.oauth2_exchange_code_for_tokens(code)
             except Exception as e:
                 log.info(f'Exception on oauth2, probably invalid token {e}')
-                return redirect(self.appbuilder.get_url_for_login)
+                url_flask = self.appbuilder.get_url_for_login
+                return redirect(redirect_url_static)
             f_session['tokens'] = tokens.by_resource_server
 
             user_info = self.get_globus_user_profile_info(
@@ -100,7 +104,9 @@ class CustomOAuthView(AuthOAuthView):
             else:
                 login_user(user)
                 self.appbuilder.sm.update_user_auth_stat(user)
-                return redirect(self.appbuilder.get_url_for_index)
+                url_flask = self.appbuilder.get_url_for_index
+                url_static = get_config_param("server_url").strip('"') + "/home"
+                return redirect(url_static)
 
     @expose("/logout/", methods=["GET", "POST"])
     def logout(self, seesion=None):
@@ -133,7 +139,7 @@ class CustomOAuthView(AuthOAuthView):
         return self.authHelper.getUserInfo(token, True)
 
 
-class OIDCSecurityManager(AirflowSecurityManager):
+class OIDCSecurityManager(FabAirflowSecurityManagerOverride):
     """
     Custom security manager class that allows using the OpenID Connection authentication method.
     """
@@ -152,7 +158,7 @@ SECURITY_MANAGER_CLASS = OIDCSecurityManager
 basedir = os.path.abspath(os.path.dirname(__file__))
 
 # The SQLAlchemy connection string.
-SQLALCHEMY_DATABASE_URI = conf.get('core', 'SQL_ALCHEMY_CONN')
+SQLALCHEMY_DATABASE_URI = conf.get('database', 'SQL_ALCHEMY_CONN')
 
 # Flask-WTF flag for CSRF
 WTF_CSRF_ENABLED = True

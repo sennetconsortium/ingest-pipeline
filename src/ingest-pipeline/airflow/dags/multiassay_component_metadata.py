@@ -20,6 +20,7 @@ from utils import (
     localized_assert_json_matches_schema as assert_json_matches_schema,
     pythonop_get_dataset_state,
     encrypt_tok,
+    get_local_vm,
 )
 
 from hubmap_operators.common_operators import (
@@ -55,6 +56,8 @@ default_args = {
     "retry_delay": timedelta(minutes=1),
     "xcom_push": True,
     "queue": get_queue_resource("multiassay_component_metadata"),
+    "executor_config": {"SlurmExecutor": {"slurm_output_path": "/home/codcc/airflow-logs/slurm/%x_%N_%j.out",
+                                          "cpu_nodes": get_local_vm(os.environ["AIRFLOW_CONN_INGEST_API_CONNECTION"])}},
     "on_failure_callback": create_dataset_state_error_callback(get_uuid_for_error),
 }
 

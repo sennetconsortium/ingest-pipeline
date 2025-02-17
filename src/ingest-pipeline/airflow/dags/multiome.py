@@ -1,3 +1,4 @@
+import os
 from collections import namedtuple
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -34,14 +35,9 @@ from utils import (
     get_queue_resource,
     get_threads_resource,
     get_preserve_scratch_resource,
-    get_instance_type,
-    get_environment_instance
+    get_local_vm,
 )
 
-from aws_utils import (
-    create_instance,
-    terminate_instance
-)
 
 MultiomeSequencingDagParameters = namedtuple(
     "MultiomeSequencingDagParameters",
@@ -76,6 +72,7 @@ def generate_multiome_dag(params: MultiomeSequencingDagParameters) -> DAG:
         "retry_delay": timedelta(minutes=1),
         "xcom_push": True,
         "queue": get_queue_resource(params.dag_id),
+        "executor_config": {"SlurmExecutor": {"slurm_output_path": "/home/codcc/airflow-logs/slurm/%x_%N_%j.out"}},
         "on_failure_callback": utils.create_dataset_state_error_callback(get_uuid_for_error),
     }
 
@@ -95,23 +92,6 @@ def generate_multiome_dag(params: MultiomeSequencingDagParameters) -> DAG:
             Path("portal-containers", "mudata-to-ui.cwl"),
         )
 
-        def start_new_environment(**kwargs):
-            uuid = kwargs['run_id']
-            instance_id = create_instance(uuid, f'Airflow {get_environment_instance()} Worker',
-                                          get_instance_type(dag.dag_id))
-            if instance_id is None:
-                return 1
-            else:
-                kwargs['ti'].xcom_push(key='instance_id', value=instance_id)
-                return 0
-
-        t_initialize_environment = PythonOperator(
-            task_id='initialize_environment',
-            python_callable=start_new_environment,
-            provide_context=True,
-            op_kwargs={
-            }
-        )
 
         def build_dataset_name(**kwargs):
             return inner_build_dataset_name(dag.dag_id, params.pipeline_name, **kwargs)
@@ -312,6 +292,9 @@ def generate_multiome_dag(params: MultiomeSequencingDagParameters) -> DAG:
                 "dataset_name_callable": build_dataset_name,
                 "pipeline_shorthand": "Salmon + ArchR + Muon",
             },
+            executor_config={"SlurmExecutor": {
+                "slurm_output_path": "/home/codcc/airflow-logs/slurm/%x_%N_%j.out",
+                "cpu_nodes": get_local_vm(os.environ["AIRFLOW_CONN_INGEST_API_CONNECTION"])}},
         )
 
         t_set_dataset_error = PythonOperator(
@@ -324,6 +307,9 @@ def generate_multiome_dag(params: MultiomeSequencingDagParameters) -> DAG:
                 "ds_state": "Error",
                 "message": f"An error occurred in {params.pipeline_name}",
             },
+            executor_config={"SlurmExecutor": {
+                "slurm_output_path": "/home/codcc/airflow-logs/slurm/%x_%N_%j.out",
+                "cpu_nodes": get_local_vm(os.environ["AIRFLOW_CONN_INGEST_API_CONNECTION"])}},
         )
 
         send_status_msg = make_send_status_msg_function(
@@ -341,38 +327,55 @@ def generate_multiome_dag(params: MultiomeSequencingDagParameters) -> DAG:
             task_id="send_status_msg",
             python_callable=send_status_msg,
             provide_context=True,
+            executor_config={"SlurmExecutor": {
+                "slurm_output_path": "/home/codcc/airflow-logs/slurm/%x_%N_%j.out",
+                "cpu_nodes": get_local_vm(os.environ["AIRFLOW_CONN_INGEST_API_CONNECTION"])}},
         )
 
-        t_log_info = LogInfoOperator(task_id="log_info")
-        t_join = JoinOperator(task_id="join")
-        t_create_tmpdir = CreateTmpDirOperator(task_id="create_tmpdir")
-        t_cleanup_tmpdir = CleanupTmpDirOperator(task_id="cleanup_tmpdir")
-        t_set_dataset_processing = SetDatasetProcessingOperator(task_id="set_dataset_processing")
-        t_move_data = MoveDataOperator(task_id="move_data")
+        t_log_info = LogInfoOperator(task_id="log_info",
+                                     executor_config={"SlurmExecutor": {
+                                         "slurm_output_path": "/home/codcc/airflow-logs/slurm/%x_%N_%j.out",
+                                         "cpu_nodes": get_local_vm(
+                                             os.environ["AIRFLOW_CONN_INGEST_API_CONNECTION"])}},
+                                     )
+        t_join = JoinOperator(task_id="join",
+                              executor_config={"SlurmExecutor": {
+                                  "slurm_output_path": "/home/codcc/airflow-logs/slurm/%x_%N_%j.out",
+                                  "cpu_nodes": get_local_vm(
+                                      os.environ["AIRFLOW_CONN_INGEST_API_CONNECTION"])}},
+                              )
+        t_create_tmpdir = CreateTmpDirOperator(task_id="create_tmpdir",
+                                               executor_config={"SlurmExecutor": {
+                                                   "slurm_output_path": "/home/codcc/airflow-logs/slurm/%x_%N_%j.out",
+                                                   "cpu_nodes": get_local_vm(os.environ[
+                                                                                 "AIRFLOW_CONN_INGEST_API_CONNECTION"])}},
+                                               )
+        t_cleanup_tmpdir = CleanupTmpDirOperator(task_id="cleanup_tmpdir",
+                                                 executor_config={"SlurmExecutor": {
+                                                     "slurm_output_path": "/home/codcc/airflow-logs/slurm/%x_%N_%j.out",
+                                                     "cpu_nodes": get_local_vm(os.environ[
+                                                                                   "AIRFLOW_CONN_INGEST_API_CONNECTION"])}},
+                                                 )
+        t_set_dataset_processing = SetDatasetProcessingOperator(task_id="set_dataset_processing",
+                                                                executor_config={"SlurmExecutor": {
+                                                                    "slurm_output_path": "/home/codcc/airflow-logs/slurm/%x_%N_%j.out",
+                                                                    "cpu_nodes": get_local_vm(
+                                                                        os.environ[
+                                                                            "AIRFLOW_CONN_INGEST_API_CONNECTION"])}},
+                                                                )
+        t_move_data = MoveDataOperator(task_id="move_data",
+                                       executor_config={"SlurmExecutor": {
+                                           "slurm_output_path": "/home/codcc/airflow-logs/slurm/%x_%N_%j.out",
+                                           "cpu_nodes": get_local_vm(
+                                               os.environ["AIRFLOW_CONN_INGEST_API_CONNECTION"])}},
+                                       )
 
-        def terminate_new_environment(**kwargs):
-            instance_id = kwargs['ti'].xcom_pull(key='instance_id', task_ids="initialize_environment")
-            if instance_id is None:
-                return 1
-            else:
-                uuid = kwargs['run_id']
-                terminate_instance(instance_id, uuid)
-            return 0
-
-        t_terminate_environment = PythonOperator(
-            task_id='terminate_environment',
-            python_callable=terminate_new_environment,
-            provide_context=True,
-            op_kwargs={
-            }
-        )
 
         (
             t_log_info
             >> t_create_tmpdir
             >> t_send_create_dataset
             >> t_set_dataset_processing
-            >> t_initialize_environment
             >> prepare_cwl1
             >> t_build_cmd1
             >> t_pipeline_exec
@@ -388,14 +391,12 @@ def generate_multiome_dag(params: MultiomeSequencingDagParameters) -> DAG:
             >> t_move_data
             >> t_send_status
             >> t_join
-            >> t_terminate_environment
         )
         t_maybe_keep_cwl1 >> t_set_dataset_error
         t_maybe_keep_cwl2 >> t_set_dataset_error
         t_maybe_keep_cwl3 >> t_set_dataset_error
         t_set_dataset_error >> t_join
         t_join >> t_cleanup_tmpdir
-        t_cleanup_tmpdir >> t_terminate_environment
 
     return dag
 

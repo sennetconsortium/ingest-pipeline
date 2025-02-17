@@ -43,8 +43,9 @@ cd "$DIR"
 top_level_dir="$(git rev-parse --show-toplevel)"
 
 # establish OS context
-source source_platform_file.sh
+ENV_SCRIPT="/airflow_environments/env_${HUBMAP_INSTANCE}.sh"
 
+. "$(dirname "$(readlink -f "$0")")${ENV_SCRIPT}"
 # Handle setting of environment variables.
 #
 # The goal is to let values from the environment (prefix HUBMAP_) override
@@ -96,4 +97,5 @@ printenv
 
 cd $AIRFLOW_HOME ; \
 env AIRFLOW__HUBMAP_API_PLUGIN__BUILD_NUMBER="$(cat ${top_level_dir}/build_number)" \
+    AIRFLOW__WEBSERVER__SHOW_TRIGGER_FORM_IF_NO_PARAMS="True" \
     airflow $*

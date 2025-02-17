@@ -33,7 +33,9 @@ function get_dir_of_this_script () {
 get_dir_of_this_script  # sets $DIR
 cd $DIR
 
-source source_platform_file.sh
+ENV_SCRIPT="/airflow_environments/env_${HUBMAP_INSTANCE}.sh"
+
+. "$(dirname "$(readlink -f "$0")")${ENV_SCRIPT}"
 
 echo $HM_AF_METHOD $HM_AF_ENV_NAME
 if [ "${HM_AF_METHOD}" == 'conda' ] ; then
