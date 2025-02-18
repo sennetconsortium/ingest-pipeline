@@ -31,7 +31,7 @@ from utils import (
     HMDAG,
     get_queue_resource,
     get_preserve_scratch_resource,
-    get_local_vm,
+    get_local_vm, get_threads_resource,
 )
 
 default_args = {
@@ -45,6 +45,7 @@ default_args = {
     "retry_delay": timedelta(minutes=1),
     "xcom_push": True,
     "queue": get_queue_resource("geomx"),
+    "executor_config": {"SlurmExecutor": {"output": "/home/codcc/airflow-logs/slurm/%x_%N_%j.out"}},
     "on_failure_callback": utils.create_dataset_state_error_callback(get_uuid_for_error),
 }
 
@@ -63,6 +64,8 @@ with HMDAG(
     pipeline_name = "geomx"
     cwl_workflows = get_absolute_workflows(
         Path("geomx-pipeline", "pipeline.cwl"),
+        Path("ome-tiff-pyramid", "pipeline.cwl"),
+        Path("portal-containers", "ome-tiff-offsets.cwl"),
     )
 
     def build_dataset_name(**kwargs):
@@ -108,9 +111,109 @@ with HMDAG(
         python_callable=utils.pythonop_maybe_keep,
         provide_context=True,
         op_kwargs={
-            "next_op": "move_data",
+            "next_op": "prepare_cwl2",
             "bail_op": "set_dataset_error",
             "test_op": "pipeline_exec",
+        },
+    )
+
+    prepare_cwl2 = DummyOperator(task_id="prepare_cwl2")
+
+    def build_cwltool_cmd2(**kwargs):
+        run_id = kwargs["run_id"]
+
+        # tmpdir is temp directory in /hubmap-tmp
+        tmpdir = get_tmp_dir_path(run_id)
+        print("tmpdir: ", tmpdir)
+
+        # data directory is the stitched images, which are found in tmpdir
+        data_dir = get_parent_data_dir(**kwargs)
+        print("data_dir: ", data_dir)
+
+        # this is the call to the CWL
+        command = [
+            *get_cwltool_base_cmd(tmpdir),
+            cwl_workflows[1],
+            "--processes",
+            get_threads_resource(dag.dag_id),
+            "--ometiff_directory",
+            data_dir / "lab_processed/images/",
+        ]
+        return join_quote_command_str(command)
+
+
+    t_build_cmd2 = PythonOperator(
+        task_id="build_cmd2",
+        python_callable=build_cwltool_cmd2,
+        provide_context=True,
+    )
+
+    t_pipeline_exec_cwl_ome_tiff_pyramid = BashOperator(
+        task_id="pipeline_exec_cwl_ome_tiff_pyramid",
+        bash_command=""" \
+            tmp_dir={{tmp_dir_path(run_id)}} ; \
+            mkdir -p ${tmp_dir}/cwl_out ; \
+            cd ${tmp_dir}/cwl_out ; \
+            {{ti.xcom_pull(task_ids='build_cmd2')}} >> $tmp_dir/session.log 2>&1 ; \
+            echo $?
+            """,
+    )
+
+    t_maybe_keep_cwl2 = BranchPythonOperator(
+        task_id="maybe_keep_cwl2",
+        python_callable=utils.pythonop_maybe_keep,
+        provide_context=True,
+        op_kwargs={
+            "next_op": "prepare_cwl3",
+            "bail_op": "set_dataset_error",
+            "test_op": "pipeline_exec_cwl_ome_tiff_pyramid",
+        },
+    )
+
+    prepare_cwl3 = DummyOperator(task_id="prepare_cwl3")
+
+    def build_cwltool_cmd3(**kwargs):
+        run_id = kwargs["run_id"]
+        tmpdir = get_tmp_dir_path(run_id)
+        print("tmpdir: ", tmpdir)
+        parent_data_dir = get_parent_data_dir(**kwargs)
+        print("parent_data_dir: ", parent_data_dir)
+        data_dir = tmpdir / "cwl_out"
+        print("data_dir: ", data_dir)
+
+        command = [
+            *get_cwltool_base_cmd(tmpdir),
+            cwl_workflows[2],
+            "--input_dir",
+            data_dir / "ometiff-pyramids",
+        ]
+
+        return join_quote_command_str(command)
+
+    t_build_cmd3 = PythonOperator(
+        task_id="build_cmd3",
+        python_callable=build_cwltool_cmd3,
+        provide_context=True,
+    )
+
+    t_pipeline_exec_cwl_ome_tiff_offsets = BashOperator(
+        task_id="pipeline_exec_cwl_ome_tiff_offsets",
+        bash_command=""" \
+            tmp_dir={{tmp_dir_path(run_id)}} ; \
+            cd ${tmp_dir}/cwl_out ; \
+            {{ti.xcom_pull(task_ids='build_cmd3')}} >> ${tmp_dir}/session.log 2>&1 ; \
+            echo $?
+            """,
+    )
+
+    t_maybe_keep_cwl3 = BranchPythonOperator(
+        task_id="maybe_keep_cwl3",
+        python_callable=utils.pythonop_maybe_keep,
+        provide_context=True,
+        op_kwargs={
+            "next_op": "move_data",
+            "bail_op": "set_dataset_error",
+            "test_op": "pipeline_exec_cwl_ome_tiff_offsets",
         },
     )
 
@@ -126,8 +229,8 @@ with HMDAG(
             "pipeline_shorthand": "AnnData",
         },
         executor_config={"SlurmExecutor": {
-            "slurm_output_path": "/home/codcc/airflow-logs/slurm/%x_%N_%j.out",
-            "cpu_nodes": get_local_vm(os.environ["AIRFLOW_CONN_INGEST_API_CONNECTION"])}},
+            "output": "/home/codcc/airflow-logs/slurm/%x_%N_%j.out",
+            "nodelist": get_local_vm(os.environ["AIRFLOW_CONN_INGEST_API_CONNECTION"])}},
     )
 
     t_set_dataset_error = PythonOperator(
@@ -141,8 +244,8 @@ with HMDAG(
             "message": "An error occurred in {}".format(pipeline_name),
         },
         executor_config={"SlurmExecutor": {
-            "slurm_output_path": "/home/codcc/airflow-logs/slurm/%x_%N_%j.out",
-            "cpu_nodes": get_local_vm(os.environ["AIRFLOW_CONN_INGEST_API_CONNECTION"])}},
+            "output": "/home/codcc/airflow-logs/slurm/%x_%N_%j.out",
+            "nodelist": get_local_vm(os.environ["AIRFLOW_CONN_INGEST_API_CONNECTION"])}},
     )
 
     send_status_msg = make_send_status_msg_function(
@@ -156,34 +259,34 @@ with HMDAG(
         python_callable=send_status_msg,
         provide_context=True,
         executor_config={"SlurmExecutor": {
-            "slurm_output_path": "/home/codcc/airflow-logs/slurm/%x_%N_%j.out",
-            "cpu_nodes": get_local_vm(os.environ["AIRFLOW_CONN_INGEST_API_CONNECTION"])}},
+            "output": "/home/codcc/airflow-logs/slurm/%x_%N_%j.out",
+            "nodelist": get_local_vm(os.environ["AIRFLOW_CONN_INGEST_API_CONNECTION"])}},
     )
 
     t_log_info = LogInfoOperator(task_id="log_info",
                                  executor_config={"SlurmExecutor": {
-                                     "slurm_output_path": "/home/codcc/airflow-logs/slurm/%x_%N_%j.out",
-                                     "cpu_nodes": get_local_vm(os.environ["AIRFLOW_CONN_INGEST_API_CONNECTION"])}},)
+                                     "output": "/home/codcc/airflow-logs/slurm/%x_%N_%j.out",
+                                     "nodelist": get_local_vm(os.environ["AIRFLOW_CONN_INGEST_API_CONNECTION"])}},)
     t_join = JoinOperator(task_id="join",
                           executor_config={"SlurmExecutor": {
-                              "slurm_output_path": "/home/codcc/airflow-logs/slurm/%x_%N_%j.out",
-                              "cpu_nodes": get_local_vm(os.environ["AIRFLOW_CONN_INGEST_API_CONNECTION"])}},)
+                              "output": "/home/codcc/airflow-logs/slurm/%x_%N_%j.out",
+                              "nodelist": get_local_vm(os.environ["AIRFLOW_CONN_INGEST_API_CONNECTION"])}},)
     t_create_tmpdir = CreateTmpDirOperator(task_id="create_tmpdir",
                                            executor_config={"SlurmExecutor": {
-                                               "slurm_output_path": "/home/codcc/airflow-logs/slurm/%x_%N_%j.out",
-                                               "cpu_nodes": get_local_vm(os.environ["AIRFLOW_CONN_INGEST_API_CONNECTION"])}},)
+                                               "output": "/home/codcc/airflow-logs/slurm/%x_%N_%j.out",
+                                               "nodelist": get_local_vm(os.environ["AIRFLOW_CONN_INGEST_API_CONNECTION"])}},)
     t_cleanup_tmpdir = CleanupTmpDirOperator(task_id="cleanup_tmpdir",
                                              executor_config={"SlurmExecutor": {
-                                                 "slurm_output_path": "/home/codcc/airflow-logs/slurm/%x_%N_%j.out",
-                                                 "cpu_nodes": get_local_vm(os.environ["AIRFLOW_CONN_INGEST_API_CONNECTION"])}},)
+                                                 "output": "/home/codcc/airflow-logs/slurm/%x_%N_%j.out",
+                                                 "nodelist": get_local_vm(os.environ["AIRFLOW_CONN_INGEST_API_CONNECTION"])}},)
     t_set_dataset_processing = SetDatasetProcessingOperator(task_id="set_dataset_processing",
                                                             executor_config={"SlurmExecutor": {
-                                                                "slurm_output_path": "/home/codcc/airflow-logs/slurm/%x_%N_%j.out",
-                                                                "cpu_nodes": get_local_vm(os.environ["AIRFLOW_CONN_INGEST_API_CONNECTION"])}},)
+                                                                "output": "/home/codcc/airflow-logs/slurm/%x_%N_%j.out",
+                                                                "nodelist": get_local_vm(os.environ["AIRFLOW_CONN_INGEST_API_CONNECTION"])}},)
     t_move_data = MoveDataOperator(task_id="move_data",
                                    executor_config={"SlurmExecutor": {
-                                       "slurm_output_path": "/home/codcc/airflow-logs/slurm/%x_%N_%j.out",
-                                       "cpu_nodes": get_local_vm(os.environ["AIRFLOW_CONN_INGEST_API_CONNECTION"])}},)
+                                       "output": "/home/codcc/airflow-logs/slurm/%x_%N_%j.out",
+                                       "nodelist": get_local_vm(os.environ["AIRFLOW_CONN_INGEST_API_CONNECTION"])}},)
     (
         t_log_info
         >> t_create_tmpdir
@@ -193,10 +296,20 @@ with HMDAG(
         >> t_build_cmd1
         >> t_pipeline_exec
         >> t_maybe_keep_cwl1
+        >> prepare_cwl2
+        >> t_build_cmd2
+        >> t_pipeline_exec_cwl_ome_tiff_pyramid
+        >> t_maybe_keep_cwl2
+        >> prepare_cwl3
+        >> t_build_cmd3
+        >> t_pipeline_exec_cwl_ome_tiff_offsets
+        >> t_maybe_keep_cwl3
         >> t_move_data
         >> t_send_status
         >> t_join
     )
     t_maybe_keep_cwl1 >> t_set_dataset_error
+    t_maybe_keep_cwl2 >> t_set_dataset_error
+    t_maybe_keep_cwl3 >> t_set_dataset_error
     t_set_dataset_error >> t_join
     t_join >> t_cleanup_tmpdir
