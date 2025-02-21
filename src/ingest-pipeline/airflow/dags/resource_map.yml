@@ -77,17 +77,17 @@ resource_map:
         'threads': 6
   - 'dag_re': 'scan_and_begin_processing'
     'preserve_scratch': true
-    'lanes': 1
+    'lanes': 2
     'tasks':
       - 'task_re': 'run_validation'
         'queue': 'BIG'
-        'coreuse': 60
+        'coreuse': 45
       - 'task_re': '.*'
         'queue': 'APPS'
-        'threads': 6
+        'threads': 12
   - 'dag_re': 'validate_upload'
     'preserve_scratch': true
-    'lanes': 1
+    'lanes': 2
     'tasks':
       - 'task_re': 'run_validation'
         'queue': 'BIG'

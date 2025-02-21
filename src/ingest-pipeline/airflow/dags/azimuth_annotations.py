@@ -35,6 +35,7 @@ from utils import (
     build_provenance_function,
     get_assay_previous_version,
     get_local_vm,
+    get_threads_resource,
 )
 
 default_args = {
@@ -48,7 +49,8 @@ default_args = {
     "retry_delay": timedelta(minutes=1),
     "xcom_push": True,
     "queue": get_queue_resource("azimuth_annotations"),
-    "executor_config": {"SlurmExecutor": {"output": "/home/codcc/airflow-logs/slurm/%x_%N_%j.out"}},
+    "executor_config": {"SlurmExecutor": {"output": "/home/codcc/airflow-logs/slurm/%x_%N_%j.out",
+                                          "cpus-per-task": str(get_threads_resource("azimuth_annotations"))}},
     "on_failure_callback": utils.create_dataset_state_error_callback(get_uuid_for_error),
 }
 
