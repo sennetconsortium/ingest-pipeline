@@ -91,7 +91,7 @@ resource_map:
     'tasks':
       - 'task_re': 'run_validation'
         'queue': 'BIG'
-        'coreuse': 60
+        'coreuse': 45
       - 'task_re': '.*'
         'queue': 'APPS'
         'threads': 12

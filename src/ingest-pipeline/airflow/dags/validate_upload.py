@@ -52,7 +52,7 @@ default_args = {
     "xcom_push": True,
     "executor_config": {"SlurmExecutor": {"output": "/home/codcc/airflow-logs/slurm/%x_%N_%j.out",
                                           "cpus-per-task": str(get_threads_resource("validate_upload")),
-                                          "mem": "256G"}},
+                                          "mem": "512G"}},
     "queue": get_queue_resource("validate_upload"),
 }
 
