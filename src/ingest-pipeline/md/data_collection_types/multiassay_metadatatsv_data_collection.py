@@ -14,7 +14,6 @@ from requests import codes
 from requests.exceptions import HTTPError
 from type_base import MetadataError
 from data_collection import DataCollection
-import urllib.parse as urlparser
 
 
 class MultiassayMetadataTSVDataCollection(DataCollection):
@@ -62,7 +61,7 @@ class MultiassayMetadataTSVDataCollection(DataCollection):
         assert self.offsetdir is not None, "Wrong dataset type?"
 
     def collect_metadata(self, component=None, component_process=None):
-        ingest_api_url = urlparser.unquote(os.getenv("INGEST_API_URL")).split("http://")[1]
+        ingest_api_url = os.getenv("INGEST_API_URL")
         md_type_tbl = self.get_md_type_tbl()
         rslt = {}
         cl = []
