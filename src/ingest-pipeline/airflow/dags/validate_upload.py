@@ -50,7 +50,9 @@ default_args = {
     "retries": 1,
     "retry_delay": timedelta(minutes=1),
     "xcom_push": True,
-    "executor_config": {"SlurmExecutor": {"slurm_output_path": "/home/codcc/airflow-logs/slurm/%x_%N_%j.out"}},
+    "executor_config": {"SlurmExecutor": {"output": "/home/codcc/airflow-logs/slurm/%x_%N_%j.out",
+                                          "cpus-per-task": str(get_threads_resource("validate_upload")),
+                                          "mem": "500G"}},
     "queue": get_queue_resource("validate_upload"),
 }
 
@@ -98,8 +100,8 @@ with HMDAG(
         task_id="find_uuid",
         python_callable=find_uuid,
         provide_context=True,
-        executor_config={"SlurmExecutor": {"slurm_output_path": "/home/codcc/airflow-logs/slurm/%x_%N_%j.out",
-                                           "cpu_nodes": get_local_vm(os.environ["AIRFLOW_CONN_INGEST_API_CONNECTION"])}},
+        executor_config={"SlurmExecutor": {"output": "/home/codcc/airflow-logs/slurm/%x_%N_%j.out",
+                                           "nodelist": get_local_vm(os.environ["AIRFLOW_CONN_INGEST_API_CONNECTION"])}},
     )
 
     def run_validation(**kwargs):
@@ -189,21 +191,21 @@ with HMDAG(
         python_callable=send_status_msg,
         provide_context=True,
         executor_config={
-            "SlurmExecutor": {"slurm_output_path": "/home/codcc/airflow-logs/slurm/%x_%N_%j.out",
-                              "cpu_nodes": get_local_vm(
+            "SlurmExecutor": {"output": "/home/codcc/airflow-logs/slurm/%x_%N_%j.out",
+                              "nodelist": get_local_vm(
                                   os.environ["AIRFLOW_CONN_INGEST_API_CONNECTION"])}},
     )
 
     t_create_tmpdir = CreateTmpDirOperator(task_id="create_temp_dir",
                                            executor_config={"SlurmExecutor": {
-                                               "slurm_output_path": "/home/codcc/airflow-logs/slurm/%x_%N_%j.out",
-                                               "cpu_nodes": get_local_vm(os.environ[
+                                               "output": "/home/codcc/airflow-logs/slurm/%x_%N_%j.out",
+                                               "nodelist": get_local_vm(os.environ[
                                                                              "AIRFLOW_CONN_INGEST_API_CONNECTION"])}},
                                            )
     t_cleanup_tmpdir = CleanupTmpDirOperator(task_id="cleanup_temp_dir",
                                              executor_config={"SlurmExecutor": {
-                                                 "slurm_output_path": "/home/codcc/airflow-logs/slurm/%x_%N_%j.out",
-                                                 "cpu_nodes": get_local_vm(os.environ[
+                                                 "output": "/home/codcc/airflow-logs/slurm/%x_%N_%j.out",
+                                                 "nodelist": get_local_vm(os.environ[
                                                                                "AIRFLOW_CONN_INGEST_API_CONNECTION"])}},
                                              )
 
