@@ -77,7 +77,7 @@ resource_map:
         'threads': 6
   - 'dag_re': 'scan_and_begin_processing'
     'preserve_scratch': true
-    'lanes': 2
+    'lanes': 4
     'tasks':
       - 'task_re': 'run_validation'
         'queue': 'BIG'
