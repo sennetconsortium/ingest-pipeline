@@ -81,10 +81,10 @@ resource_map:
     'tasks':
       - 'task_re': 'run_validation'
         'queue': 'BIG'
-        'coreuse': 45
+        'coreuse': 25
       - 'task_re': '.*'
         'queue': 'APPS'
-        'threads': 22
+        'threads': 12
   - 'dag_re': 'validate_upload'
     'preserve_scratch': true
     'lanes': 2
