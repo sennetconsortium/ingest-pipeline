@@ -48,7 +48,8 @@ default_args = {
     "retry_delay": timedelta(minutes=1),
     "xcom_push": True,
     "queue": get_queue_resource("salmon_rnaseq_bulk"),
-    "executor_config": {"SlurmExecutor": {"slurm_output_path": "/home/codcc/airflow-logs/slurm/%x_%N_%j.out"}},
+    "executor_config": {"SlurmExecutor": {"output": "/home/codcc/airflow-logs/slurm/%x_%N_%j.out",
+                                          "cpus-per-task": str(get_threads_resource("salmon_rnsaeq_bulk"))}},
     "on_failure_callback": utils.create_dataset_state_error_callback(get_uuid_for_error),
 }
 
@@ -153,8 +154,8 @@ with HMDAG(
             "pipeline_shorthand": "Salmon",
         },
         executor_config={"SlurmExecutor": {
-            "slurm_output_path": "/home/codcc/airflow-logs/slurm/%x_%N_%j.out",
-            "cpu_nodes": get_local_vm(os.environ["AIRFLOW_CONN_INGEST_API_CONNECTION"])}},
+            "output": "/home/codcc/airflow-logs/slurm/%x_%N_%j.out",
+            "nodelist": get_local_vm(os.environ["AIRFLOW_CONN_INGEST_API_CONNECTION"])}},
     )
 
     t_set_dataset_error = PythonOperator(
@@ -168,8 +169,8 @@ with HMDAG(
             "message": "An error occurred in {}".format(pipeline_name),
         },
         executor_config={"SlurmExecutor": {
-            "slurm_output_path": "/home/codcc/airflow-logs/slurm/%x_%N_%j.out",
-            "cpu_nodes": get_local_vm(os.environ["AIRFLOW_CONN_INGEST_API_CONNECTION"])}},
+            "output": "/home/codcc/airflow-logs/slurm/%x_%N_%j.out",
+            "nodelist": get_local_vm(os.environ["AIRFLOW_CONN_INGEST_API_CONNECTION"])}},
     )
 
     send_status_msg = make_send_status_msg_function(
@@ -183,34 +184,34 @@ with HMDAG(
         python_callable=send_status_msg,
         provide_context=True,
         executor_config={"SlurmExecutor": {
-            "slurm_output_path": "/home/codcc/airflow-logs/slurm/%x_%N_%j.out",
-            "cpu_nodes": get_local_vm(os.environ["AIRFLOW_CONN_INGEST_API_CONNECTION"])}},
+            "output": "/home/codcc/airflow-logs/slurm/%x_%N_%j.out",
+            "nodelist": get_local_vm(os.environ["AIRFLOW_CONN_INGEST_API_CONNECTION"])}},
     )
 
     t_log_info = LogInfoOperator(task_id="log_info",
                                  executor_config={"SlurmExecutor": {
-                                     "slurm_output_path": "/home/codcc/airflow-logs/slurm/%x_%N_%j.out",
-                                     "cpu_nodes": get_local_vm(os.environ["AIRFLOW_CONN_INGEST_API_CONNECTION"])}},)
+                                     "output": "/home/codcc/airflow-logs/slurm/%x_%N_%j.out",
+                                     "nodelist": get_local_vm(os.environ["AIRFLOW_CONN_INGEST_API_CONNECTION"])}},)
     t_join = JoinOperator(task_id="join",
                           executor_config={"SlurmExecutor": {
-                              "slurm_output_path": "/home/codcc/airflow-logs/slurm/%x_%N_%j.out",
-                              "cpu_nodes": get_local_vm(os.environ["AIRFLOW_CONN_INGEST_API_CONNECTION"])}},)
+                              "output": "/home/codcc/airflow-logs/slurm/%x_%N_%j.out",
+                              "nodelist": get_local_vm(os.environ["AIRFLOW_CONN_INGEST_API_CONNECTION"])}},)
     t_create_tmpdir = CreateTmpDirOperator(task_id="create_tmpdir",
                                            executor_config={"SlurmExecutor": {
-                                               "slurm_output_path": "/home/codcc/airflow-logs/slurm/%x_%N_%j.out",
-                                               "cpu_nodes": get_local_vm(os.environ["AIRFLOW_CONN_INGEST_API_CONNECTION"])}},)
+                                               "output": "/home/codcc/airflow-logs/slurm/%x_%N_%j.out",
+                                               "nodelist": get_local_vm(os.environ["AIRFLOW_CONN_INGEST_API_CONNECTION"])}},)
     t_cleanup_tmpdir = CleanupTmpDirOperator(task_id="cleanup_tmpdir",
                                              executor_config={"SlurmExecutor": {
-                                                 "slurm_output_path": "/home/codcc/airflow-logs/slurm/%x_%N_%j.out",
-                                                 "cpu_nodes": get_local_vm(os.environ["AIRFLOW_CONN_INGEST_API_CONNECTION"])}},)
+                                                 "output": "/home/codcc/airflow-logs/slurm/%x_%N_%j.out",
+                                                 "nodelist": get_local_vm(os.environ["AIRFLOW_CONN_INGEST_API_CONNECTION"])}},)
     t_set_dataset_processing = SetDatasetProcessingOperator(task_id="set_dataset_processing",
                                                             executor_config={"SlurmExecutor": {
-                                                                "slurm_output_path": "/home/codcc/airflow-logs/slurm/%x_%N_%j.out",
-                                                                "cpu_nodes": get_local_vm(os.environ["AIRFLOW_CONN_INGEST_API_CONNECTION"])}},)
+                                                                "output": "/home/codcc/airflow-logs/slurm/%x_%N_%j.out",
+                                                                "nodelist": get_local_vm(os.environ["AIRFLOW_CONN_INGEST_API_CONNECTION"])}},)
     t_move_data = MoveDataOperator(task_id="move_data",
                                    executor_config={"SlurmExecutor": {
-                                       "slurm_output_path": "/home/codcc/airflow-logs/slurm/%x_%N_%j.out",
-                                       "cpu_nodes": get_local_vm(os.environ["AIRFLOW_CONN_INGEST_API_CONNECTION"])}},)
+                                       "output": "/home/codcc/airflow-logs/slurm/%x_%N_%j.out",
+                                       "nodelist": get_local_vm(os.environ["AIRFLOW_CONN_INGEST_API_CONNECTION"])}},)
 
     (
             t_log_info
