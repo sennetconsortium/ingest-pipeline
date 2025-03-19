@@ -251,7 +251,7 @@ with HMDAG(
         bash_command=""" \
                 tmp_dir={{tmp_dir_path(run_id)}} ; \
                 cd ${tmp_dir}/cwl_out ; \
-                {{ti.xcom_pull(task_ids='build_cmd3')}} >> ${tmp_dir}/session.log 2>&1 ; \
+                {{ti.xcom_pull(task_ids='build_cmd4')}} >> ${tmp_dir}/session.log 2>&1 ; \
                 echo $?
                 """,
     )
@@ -299,7 +299,7 @@ with HMDAG(
         bash_command=""" \
                 tmp_dir={{tmp_dir_path(run_id)}} ; \
                 cd ${tmp_dir}/cwl_out ; \
-                {{ti.xcom_pull(task_ids='build_cmd3')}} >> ${tmp_dir}/session.log 2>&1 ; \
+                {{ti.xcom_pull(task_ids='build_cmd5')}} >> ${tmp_dir}/session.log 2>&1 ; \
                 echo $?
                 """,
     )
