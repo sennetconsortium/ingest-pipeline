@@ -586,5 +586,8 @@ with HMDAG(
     t_maybe_keep_cwl3 >> t_set_dataset_error
     t_maybe_keep_cwl4 >> t_set_dataset_error
     t_maybe_keep_cwl5 >> t_set_dataset_error
+    t_maybe_keep_cwl6 >> t_set_dataset_error
+    t_maybe_keep_cwl7 >> t_set_dataset_error
+    t_maybe_keep_cwl8 >> t_set_dataset_error
     t_set_dataset_error >> t_join
     t_join >> t_cleanup_tmpdir
