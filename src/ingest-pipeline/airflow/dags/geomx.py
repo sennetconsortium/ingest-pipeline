@@ -309,7 +309,7 @@ with HMDAG(
         python_callable=utils.pythonop_maybe_keep,
         provide_context=True,
         op_kwargs={
-            "next_op": "move_data",
+            "next_op": "prepare_cwl6",
             "bail_op": "set_dataset_error",
             "test_op": "pipeline_exec_cwl_ome_tiff_metadata_base",
         },
@@ -495,7 +495,15 @@ with HMDAG(
 
     send_status_msg = make_send_status_msg_function(
         dag_file=__file__,
-        retcode_ops=["pipeline_exec", "move_data"],
+        retcode_ops=["pipeline_exec",
+                     "pipeline_exec_cwl_ome_tiff_pyramid_base",
+                     "pipeline_exec_cwl_ome_tiff_offsets_base",
+                     "pipeline_exec_cwl_ome_tiff_segments_base",
+                     "pipeline_exec_cwl_ome_tiff_metadata_base",
+                     "pipeline_exec_cwl_ome_tiff_pyramid_segments",
+                     "pipeline_exec_cwl_ome_tiff_offsets_segments",
+                     "pipeline_exec_cwl_ome_tiff_metadata_segments",
+                     "move_data"],
         cwl_workflows=cwl_workflows,
     )
 
