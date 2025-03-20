@@ -446,7 +446,7 @@ with HMDAG(
         bash_command=""" \
                 tmp_dir={{tmp_dir_path(run_id)}} ; \
                 cd ${tmp_dir}/cwl_out ; \
-                {{ti.xcom_pull(task_ids='build_cmd')}} >> ${tmp_dir}/session.log 2>&1 ; \
+                {{ti.xcom_pull(task_ids='build_cmd8')}} >> ${tmp_dir}/session.log 2>&1 ; \
                 echo $?
                 """,
     )
