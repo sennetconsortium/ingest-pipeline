@@ -325,7 +325,10 @@ with HMDAG(
         print("tmpdir: ", tmpdir)
 
         # data directory is the stitched images, which are found in tmpdir
-        data_dir = get_parent_data_dir(**kwargs)
+        parent_data_dir = get_parent_data_dir(**kwargs)
+        print("data_dir: ", parent_data_dir)
+
+        data_dir = tmpdir / "cwl_out"
         print("data_dir: ", data_dir)
 
         # this is the call to the CWL
