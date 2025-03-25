@@ -232,7 +232,7 @@ with HMDAG(
             *get_cwltool_base_cmd(tmpdir),
             cwl_workflows[3],
             "--input_dir",
-            data_dir / "ometiff-pyramids",
+            data_dir / "ometiff-pyramids/lab_processed/images/",
         ]
 
         return join_quote_command_str(command)
