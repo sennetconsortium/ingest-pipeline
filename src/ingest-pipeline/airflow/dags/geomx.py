@@ -83,7 +83,6 @@ with HMDAG(
 
         command = [
             *get_cwltool_base_cmd(tmpdir),
-            "--relax-path-checks",
             "--outdir",
             tmpdir / "cwl_out",
             "--parallel",
@@ -140,7 +139,7 @@ with HMDAG(
             "--processes",
             get_threads_resource(dag.dag_id),
             "--ometiff_directory",
-            data_dir / "lab_processed/images/",
+            data_dir,
         ]
         return join_quote_command_str(command)
 
@@ -154,7 +153,6 @@ with HMDAG(
         task_id="pipeline_exec_cwl_ome_tiff_pyramid_base",
         bash_command=""" \
                 tmp_dir={{tmp_dir_path(run_id)}} ; \
-                mkdir -p ${tmp_dir}/cwl_out ; \
                 cd ${tmp_dir}/cwl_out ; \
                 {{ti.xcom_pull(task_ids='build_cmd2')}} >> $tmp_dir/session.log 2>&1 ; \
                 echo $?
