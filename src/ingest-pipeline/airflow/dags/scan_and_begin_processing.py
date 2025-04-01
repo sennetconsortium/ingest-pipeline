@@ -201,7 +201,8 @@ with HMDAG(
         executor_config={
             "SlurmExecutor": {"output": "/home/codcc/airflow-logs/slurm/%x_%N_%j.out",
                               "nodelist": get_local_vm(
-                                  os.environ["AIRFLOW_CONN_INGEST_API_CONNECTION"])}},
+                                  os.environ["AIRFLOW_CONN_INGEST_API_CONNECTION"]),
+                              "mem": "2G"}},
     )
 
     t_run_md_extract = BashOperator(
@@ -237,7 +238,8 @@ with HMDAG(
         executor_config={
             "SlurmExecutor": {"output": "/home/codcc/airflow-logs/slurm/%x_%N_%j.out",
                               "nodelist": get_local_vm(
-                                  os.environ["AIRFLOW_CONN_INGEST_API_CONNECTION"])}},
+                                  os.environ["AIRFLOW_CONN_INGEST_API_CONNECTION"]),
+                              "mem": "2G"}},
     )
 
     t_md_consistency_tests = PythonOperator(
@@ -248,7 +250,8 @@ with HMDAG(
         executor_config={
             "SlurmExecutor": {"output": "/home/codcc/airflow-logs/slurm/%x_%N_%j.out",
                               "nodelist": get_local_vm(
-                                  os.environ["AIRFLOW_CONN_INGEST_API_CONNECTION"])}},
+                                  os.environ["AIRFLOW_CONN_INGEST_API_CONNECTION"]),
+                              "mem": "2G"}},
     )
 
     t_send_status = PythonOperator(
@@ -266,13 +269,15 @@ with HMDAG(
                                            executor_config={"SlurmExecutor": {
                                                "output": "/home/codcc/airflow-logs/slurm/%x_%N_%j.out",
                                                "nodelist": get_local_vm(os.environ[
-                                                                             "AIRFLOW_CONN_INGEST_API_CONNECTION"])}},
+                                                                             "AIRFLOW_CONN_INGEST_API_CONNECTION"]),
+                                               "mem": "2G"}},
                                            )
     t_cleanup_tmpdir = CleanupTmpDirOperator(task_id="cleanup_temp_dir",
                                              executor_config={"SlurmExecutor": {
                                                  "output": "/home/codcc/airflow-logs/slurm/%x_%N_%j.out",
                                                  "nodelist": get_local_vm(os.environ[
-                                                                               "AIRFLOW_CONN_INGEST_API_CONNECTION"])}},
+                                                                               "AIRFLOW_CONN_INGEST_API_CONNECTION"]),
+                                                 "mem": "2G"}},
                                              )
 
     def flex_maybe_spawn(**kwargs):
@@ -323,9 +328,9 @@ with HMDAG(
         executor_config={
             "SlurmExecutor": {"output": "/home/codcc/airflow-logs/slurm/%x_%N_%j.out",
                               "nodelist": get_local_vm(
-                                  os.environ["AIRFLOW_CONN_INGEST_API_CONNECTION"])}},
+                                  os.environ["AIRFLOW_CONN_INGEST_API_CONNECTION"]),
+                              "mem": "2G"}},
     )
-
 
     (
             t_create_tmpdir
