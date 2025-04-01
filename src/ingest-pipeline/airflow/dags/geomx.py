@@ -67,6 +67,8 @@ with HMDAG(
         Path("geomx-pipeline", "pipeline.cwl"),
         Path("ome-tiff-pyramid", "pipeline.cwl"),
         Path("portal-containers", "ome-tiff-offsets.cwl"),
+        Path("portal-containers", "ome-tiff-segments.cwl"),
+        Path("portal-containers", "ome-tiff-metadata.cwl"),
     )
 
     def build_dataset_name(**kwargs):
@@ -81,7 +83,6 @@ with HMDAG(
 
         command = [
             *get_cwltool_base_cmd(tmpdir),
-            "--relax-path-checks",
             "--outdir",
             tmpdir / "cwl_out",
             "--parallel",
@@ -138,10 +139,9 @@ with HMDAG(
             "--processes",
             get_threads_resource(dag.dag_id),
             "--ometiff_directory",
-            data_dir / "lab_processed/images/",
+            data_dir,
         ]
         return join_quote_command_str(command)
-
 
     t_build_cmd2 = PythonOperator(
         task_id="build_cmd2",
@@ -149,15 +149,14 @@ with HMDAG(
         provide_context=True,
     )
 
-    t_pipeline_exec_cwl_ome_tiff_pyramid = BashOperator(
-        task_id="pipeline_exec_cwl_ome_tiff_pyramid",
+    t_pipeline_exec_cwl_ome_tiff_pyramid_base = BashOperator(
+        task_id="pipeline_exec_cwl_ome_tiff_pyramid_base",
         bash_command=""" \
-            tmp_dir={{tmp_dir_path(run_id)}} ; \
-            mkdir -p ${tmp_dir}/cwl_out ; \
-            cd ${tmp_dir}/cwl_out ; \
-            {{ti.xcom_pull(task_ids='build_cmd2')}} >> $tmp_dir/session.log 2>&1 ; \
-            echo $?
-            """,
+                tmp_dir={{tmp_dir_path(run_id)}} ; \
+                cd ${tmp_dir}/cwl_out ; \
+                {{ti.xcom_pull(task_ids='build_cmd2')}} >> $tmp_dir/session.log 2>&1 ; \
+                echo $?
+                """,
     )
 
     t_maybe_keep_cwl2 = BranchPythonOperator(
@@ -167,7 +166,7 @@ with HMDAG(
         op_kwargs={
             "next_op": "prepare_cwl3",
             "bail_op": "set_dataset_error",
-            "test_op": "pipeline_exec_cwl_ome_tiff_pyramid",
+            "test_op": "pipeline_exec_cwl_ome_tiff_pyramid_base",
         },
     )
 
@@ -197,14 +196,14 @@ with HMDAG(
         provide_context=True,
     )
 
-    t_pipeline_exec_cwl_ome_tiff_offsets = BashOperator(
-        task_id="pipeline_exec_cwl_ome_tiff_offsets",
+    t_pipeline_exec_cwl_ome_tiff_offsets_base = BashOperator(
+        task_id="pipeline_exec_cwl_ome_tiff_offsets_base",
         bash_command=""" \
-            tmp_dir={{tmp_dir_path(run_id)}} ; \
-            cd ${tmp_dir}/cwl_out ; \
-            {{ti.xcom_pull(task_ids='build_cmd3')}} >> ${tmp_dir}/session.log 2>&1 ; \
-            echo $?
-            """,
+                tmp_dir={{tmp_dir_path(run_id)}} ; \
+                cd ${tmp_dir}/cwl_out ; \
+                {{ti.xcom_pull(task_ids='build_cmd3')}} >> ${tmp_dir}/session.log 2>&1 ; \
+                echo $?
+                """,
     )
 
     t_maybe_keep_cwl3 = BranchPythonOperator(
@@ -212,9 +211,254 @@ with HMDAG(
         python_callable=utils.pythonop_maybe_keep,
         provide_context=True,
         op_kwargs={
+            "next_op": "prepare_cwl4",
+            "bail_op": "set_dataset_error",
+            "test_op": "pipeline_exec_cwl_ome_tiff_offsets_base",
+        },
+    )
+
+    prepare_cwl4 = DummyOperator(task_id="prepare_cwl4")
+
+    def build_cwltool_cmd4(**kwargs):
+        run_id = kwargs["run_id"]
+        tmpdir = get_tmp_dir_path(run_id)
+        print("tmpdir: ", tmpdir)
+        parent_data_dir = get_parent_data_dir(**kwargs)
+        print("parent_data_dir: ", parent_data_dir)
+        data_dir = tmpdir / "cwl_out"
+        print("data_dir: ", data_dir)
+
+        command = [
+            *get_cwltool_base_cmd(tmpdir),
+            cwl_workflows[3],
+            "--input_dir",
+            data_dir / "ometiff-pyramids/lab_processed/images/",
+        ]
+
+        return join_quote_command_str(command)
+
+
+    t_build_cmd4 = PythonOperator(
+        task_id="build_cmd4",
+        python_callable=build_cwltool_cmd4,
+        provide_context=True,
+    )
+
+    t_pipeline_exec_cwl_ome_tiff_segments_base = BashOperator(
+        task_id="pipeline_exec_cwl_ome_tiff_segments_base",
+        bash_command=""" \
+                    tmp_dir={{tmp_dir_path(run_id)}} ; \
+                    cd ${tmp_dir}/cwl_out ; \
+                    {{ti.xcom_pull(task_ids='build_cmd4')}} >> ${tmp_dir}/session.log 2>&1 ; \
+                    echo $?
+                    """,
+    )
+
+    t_maybe_keep_cwl4 = BranchPythonOperator(
+        task_id="maybe_keep_cwl4",
+        python_callable=utils.pythonop_maybe_keep,
+        provide_context=True,
+        op_kwargs={
+            "next_op": "prepare_cwl5",
+            "bail_op": "set_dataset_error",
+            "test_op": "pipeline_exec_cwl_ome_tiff_segments_base",
+        },
+    )
+
+    prepare_cwl5 = DummyOperator(task_id="prepare_cwl5")
+
+    def build_cwltool_cmd5(**kwargs):
+        run_id = kwargs["run_id"]
+        tmpdir = get_tmp_dir_path(run_id)
+        print("tmpdir: ", tmpdir)
+        parent_data_dir = get_parent_data_dir(**kwargs)
+        print("parent_data_dir: ", parent_data_dir)
+        data_dir = tmpdir / "cwl_out"
+        print("data_dir: ", data_dir)
+
+        command = [
+            *get_cwltool_base_cmd(tmpdir),
+            cwl_workflows[4],
+            "--input_dir",
+            data_dir / "ometiff-pyramids",
+        ]
+
+        return join_quote_command_str(command)
+
+
+    t_build_cmd5 = PythonOperator(
+        task_id="build_cmd5",
+        python_callable=build_cwltool_cmd5,
+        provide_context=True,
+    )
+
+    t_pipeline_exec_cwl_ome_tiff_metadata_base = BashOperator(
+        task_id="pipeline_exec_cwl_ome_tiff_metadata_base",
+        bash_command=""" \
+                    tmp_dir={{tmp_dir_path(run_id)}} ; \
+                    cd ${tmp_dir}/cwl_out ; \
+                    {{ti.xcom_pull(task_ids='build_cmd5')}} >> ${tmp_dir}/session.log 2>&1 ; \
+                    echo $?
+                    """,
+    )
+
+    t_maybe_keep_cwl5 = BranchPythonOperator(
+        task_id="maybe_keep_cwl5",
+        python_callable=utils.pythonop_maybe_keep,
+        provide_context=True,
+        op_kwargs={
+            "next_op": "prepare_cwl6",
+            "bail_op": "set_dataset_error",
+            "test_op": "pipeline_exec_cwl_ome_tiff_metadata_base",
+        },
+    )
+
+    prepare_cwl6 = DummyOperator(task_id="prepare_cwl6")
+
+    def build_cwltool_cmd6(**kwargs):
+        run_id = kwargs["run_id"]
+
+        # tmpdir is temp directory in /hubmap-tmp
+        tmpdir = get_tmp_dir_path(run_id)
+        print("tmpdir: ", tmpdir)
+
+        # data directory is the stitched images, which are found in tmpdir
+        parent_data_dir = get_parent_data_dir(**kwargs)
+        print("data_dir: ", parent_data_dir)
+
+        data_dir = tmpdir / "cwl_out"
+        print("data_dir: ", data_dir)
+
+        # this is the call to the CWL
+        command = [
+            *get_cwltool_base_cmd(tmpdir),
+            cwl_workflows[1],
+            "--processes",
+            get_threads_resource(dag.dag_id),
+            "--ometiff_directory",
+            data_dir / "output_ome_segments",
+        ]
+        return join_quote_command_str(command)
+
+    t_build_cmd6 = PythonOperator(
+        task_id="build_cmd6",
+        python_callable=build_cwltool_cmd6,
+        provide_context=True,
+    )
+
+    t_pipeline_exec_cwl_ome_tiff_pyramid_segments = BashOperator(
+        task_id="pipeline_exec_cwl_ome_tiff_pyramid_segments",
+        bash_command=""" \
+            tmp_dir={{tmp_dir_path(run_id)}} ; \
+            cd ${tmp_dir}/cwl_out ; \
+            {{ti.xcom_pull(task_ids='build_cmd6')}} >> $tmp_dir/session.log 2>&1 ; \
+            echo $?
+            """,
+    )
+
+    t_maybe_keep_cwl6 = BranchPythonOperator(
+        task_id="maybe_keep_cwl6",
+        python_callable=utils.pythonop_maybe_keep,
+        provide_context=True,
+        op_kwargs={
+            "next_op": "prepare_cwl7",
+            "bail_op": "set_dataset_error",
+            "test_op": "pipeline_exec_cwl_ome_tiff_pyramid_segments",
+        },
+    )
+
+    prepare_cwl7 = DummyOperator(task_id="prepare_cwl7")
+
+    def build_cwltool_cmd7(**kwargs):
+        run_id = kwargs["run_id"]
+        tmpdir = get_tmp_dir_path(run_id)
+        print("tmpdir: ", tmpdir)
+        parent_data_dir = get_parent_data_dir(**kwargs)
+        print("parent_data_dir: ", parent_data_dir)
+        data_dir = tmpdir / "cwl_out"
+        print("data_dir: ", data_dir)
+
+        command = [
+            *get_cwltool_base_cmd(tmpdir),
+            cwl_workflows[2],
+            "--input_dir",
+            data_dir / "output_ome_segments",
+        ]
+
+        return join_quote_command_str(command)
+
+    t_build_cmd7 = PythonOperator(
+        task_id="build_cmd7",
+        python_callable=build_cwltool_cmd7,
+        provide_context=True,
+    )
+
+    t_pipeline_exec_cwl_ome_tiff_offsets_segments = BashOperator(
+        task_id="pipeline_exec_cwl_ome_tiff_offsets_segments",
+        bash_command=""" \
+            tmp_dir={{tmp_dir_path(run_id)}} ; \
+            cd ${tmp_dir}/cwl_out ; \
+            {{ti.xcom_pull(task_ids='build_cmd7')}} >> ${tmp_dir}/session.log 2>&1 ; \
+            echo $?
+            """,
+    )
+
+    t_maybe_keep_cwl7 = BranchPythonOperator(
+        task_id="maybe_keep_cwl7",
+        python_callable=utils.pythonop_maybe_keep,
+        provide_context=True,
+        op_kwargs={
+            "next_op": "prepare_cwl8",
+            "bail_op": "set_dataset_error",
+            "test_op": "pipeline_exec_cwl_ome_tiff_offsets_segments",
+        },
+    )
+
+    prepare_cwl8 = DummyOperator(task_id="prepare_cwl8")
+
+    def build_cwltool_cmd8(**kwargs):
+        run_id = kwargs["run_id"]
+        tmpdir = get_tmp_dir_path(run_id)
+        print("tmpdir: ", tmpdir)
+        parent_data_dir = get_parent_data_dir(**kwargs)
+        print("parent_data_dir: ", parent_data_dir)
+        data_dir = tmpdir / "cwl_out"
+        print("data_dir: ", data_dir)
+
+        command = [
+            *get_cwltool_base_cmd(tmpdir),
+            cwl_workflows[4],
+            "--input_dir",
+            data_dir / "output_ome_segments",
+        ]
+
+        return join_quote_command_str(command)
+
+
+    t_build_cmd8 = PythonOperator(
+        task_id="build_cmd8",
+        python_callable=build_cwltool_cmd8,
+        provide_context=True,
+    )
+
+    t_pipeline_exec_cwl_ome_tiff_metadata_segments = BashOperator(
+        task_id="pipeline_exec_cwl_ome_tiff_metadata_segments",
+        bash_command=""" \
+                tmp_dir={{tmp_dir_path(run_id)}} ; \
+                cd ${tmp_dir}/cwl_out ; \
+                {{ti.xcom_pull(task_ids='build_cmd8')}} >> ${tmp_dir}/session.log 2>&1 ; \
+                echo $?
+                """,
+    )
+
+    t_maybe_keep_cwl8 = BranchPythonOperator(
+        task_id="maybe_keep_cwl8",
+        python_callable=utils.pythonop_maybe_keep,
+        provide_context=True,
+        op_kwargs={
             "next_op": "move_data",
             "bail_op": "set_dataset_error",
-            "test_op": "pipeline_exec_cwl_ome_tiff_offsets",
+            "test_op": "pipeline_exec_cwl_ome_tiff_metadata_segments",
         },
     )
 
@@ -251,7 +495,15 @@ with HMDAG(
 
     send_status_msg = make_send_status_msg_function(
         dag_file=__file__,
-        retcode_ops=["pipeline_exec", "move_data"],
+        retcode_ops=["pipeline_exec",
+                     "pipeline_exec_cwl_ome_tiff_pyramid_base",
+                     "pipeline_exec_cwl_ome_tiff_offsets_base",
+                     "pipeline_exec_cwl_ome_tiff_segments_base",
+                     "pipeline_exec_cwl_ome_tiff_metadata_base",
+                     "pipeline_exec_cwl_ome_tiff_pyramid_segments",
+                     "pipeline_exec_cwl_ome_tiff_offsets_segments",
+                     "pipeline_exec_cwl_ome_tiff_metadata_segments",
+                     "move_data"],
         cwl_workflows=cwl_workflows,
     )
 
@@ -299,12 +551,32 @@ with HMDAG(
         >> t_maybe_keep_cwl1
         >> prepare_cwl2
         >> t_build_cmd2
-        >> t_pipeline_exec_cwl_ome_tiff_pyramid
+        >> t_pipeline_exec_cwl_ome_tiff_pyramid_base
         >> t_maybe_keep_cwl2
         >> prepare_cwl3
         >> t_build_cmd3
-        >> t_pipeline_exec_cwl_ome_tiff_offsets
+        >> t_pipeline_exec_cwl_ome_tiff_offsets_base
         >> t_maybe_keep_cwl3
+        >> prepare_cwl4
+        >> t_build_cmd4
+        >> t_pipeline_exec_cwl_ome_tiff_segments_base
+        >> t_maybe_keep_cwl4
+        >> prepare_cwl5
+        >> t_build_cmd5
+        >> t_pipeline_exec_cwl_ome_tiff_metadata_base
+        >> t_maybe_keep_cwl5
+        >> prepare_cwl6
+        >> t_build_cmd6
+        >> t_pipeline_exec_cwl_ome_tiff_pyramid_segments
+        >> t_maybe_keep_cwl6
+        >> prepare_cwl7
+        >> t_build_cmd7
+        >> t_pipeline_exec_cwl_ome_tiff_offsets_segments
+        >> t_maybe_keep_cwl7
+        >> prepare_cwl8
+        >> t_build_cmd8
+        >> t_pipeline_exec_cwl_ome_tiff_metadata_segments
+        >> t_maybe_keep_cwl8
         >> t_move_data
         >> t_send_status
         >> t_join
@@ -312,5 +584,10 @@ with HMDAG(
     t_maybe_keep_cwl1 >> t_set_dataset_error
     t_maybe_keep_cwl2 >> t_set_dataset_error
     t_maybe_keep_cwl3 >> t_set_dataset_error
+    t_maybe_keep_cwl4 >> t_set_dataset_error
+    t_maybe_keep_cwl5 >> t_set_dataset_error
+    t_maybe_keep_cwl6 >> t_set_dataset_error
+    t_maybe_keep_cwl7 >> t_set_dataset_error
+    t_maybe_keep_cwl8 >> t_set_dataset_error
     t_set_dataset_error >> t_join
     t_join >> t_cleanup_tmpdir
