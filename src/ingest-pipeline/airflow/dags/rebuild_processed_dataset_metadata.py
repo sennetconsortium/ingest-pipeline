@@ -1,5 +1,4 @@
 import os
-
 from airflow.operators.empty import EmptyOperator
 from datetime import datetime, timedelta
 
