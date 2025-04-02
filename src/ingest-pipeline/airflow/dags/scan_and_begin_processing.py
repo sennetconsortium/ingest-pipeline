@@ -48,10 +48,6 @@ def get_dataset_lz_path(**kwargs):
     return ctx["lz_path"]
 
 
-def get_ivt_path(**kwargs):
-    return Path(kwargs["ti"].xcom_pull(task_ids="run_validation", key="ivt_path"))
-
-
 # Following are defaults which can be overridden later on
 default_args = {
     "owner": "hubmap",
@@ -81,6 +77,7 @@ with HMDAG(
         "preserve_scratch": get_preserve_scratch_resource("scan_and_begin_processing"),
     },
 ) as dag:
+
     def read_metadata_file(**kwargs):
         md_fname = os.path.join(utils.get_tmp_dir_path(kwargs["run_id"]), "rslt.yml")
         with open(md_fname, "r") as f:
@@ -167,12 +164,13 @@ with HMDAG(
     send_status_msg = make_send_status_msg_function(
         dag_file=__file__,
         retcode_ops=["run_validation", "run_md_extract", "md_consistency_tests"],
-        cwl_workflows=[],
+        cwl_workflows=lambda **kwargs: [
+            {"workflow_path": kwargs["ti"].xcom_pull(task_ids="run_validation", key="ivt_path")}
+        ],
         dataset_uuid_fun=get_dataset_uuid,
         dataset_lz_path_fun=get_dataset_lz_path,
         metadata_fun=read_metadata_file,
         include_file_metadata=False,
-        ivt_path_fun=get_ivt_path,
     )
 
     def wrapped_send_status_msg(**kwargs):
@@ -262,7 +260,8 @@ with HMDAG(
         executor_config={
             "SlurmExecutor": {"output": "/home/codcc/airflow-logs/slurm/%x_%N_%j.out",
                               "nodelist": get_local_vm(
-                                  os.environ["AIRFLOW_CONN_INGEST_API_CONNECTION"])}},
+                                  os.environ["AIRFLOW_CONN_INGEST_API_CONNECTION"]),
+                              "mem": "2G"}},
     )
 
     t_create_tmpdir = CreateTmpDirOperator(task_id="create_temp_dir",
@@ -333,14 +332,13 @@ with HMDAG(
     )
 
     (
-            t_create_tmpdir
-            >> t_run_validation
-            >> t_maybe_continue
-            >> t_run_md_extract
-            >> t_md_consistency_tests
-            >> t_send_status
-            >> t_maybe_spawn
-            >> t_cleanup_tmpdir
+        t_create_tmpdir
+        >> t_run_validation
+        >> t_maybe_continue
+        >> t_run_md_extract
+        >> t_md_consistency_tests
+        >> t_send_status
+        >> t_maybe_spawn
+        >> t_cleanup_tmpdir
     )
-
     t_maybe_continue >> t_send_status
