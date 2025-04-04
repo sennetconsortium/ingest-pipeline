@@ -344,7 +344,7 @@ with HMDAG(
         op_kwargs={
             "next_op": "prepare_cwl6",
             "bail_op": "set_dataset_error",
-            "test_op": "pipeline_exec_cwl_ome_tiff_metadata_raw",
+            "test_op": "pipeline_exec_cwl_ome_tiff_metadata",
         },
     )
 
@@ -394,7 +394,7 @@ with HMDAG(
         op_kwargs={
             "next_op": "maybe_create_dataset",
             "bail_op": "set_dataset_error",
-            "test_op": "pipeline_exec_cwl_ome_tiff_offsets_base",
+            "test_op": "pipeline_exec_cwl_ome_tiff_offsets",
         },
     )
 
