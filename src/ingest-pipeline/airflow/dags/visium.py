@@ -390,6 +390,10 @@ with HMDAG(
             "next_op": "send_create_dataset",
             "bail_op": "join",
         },
+        executor_config={"SlurmExecutor": {
+            "output": "/home/codcc/airflow-logs/slurm/%x_%N_%j.out",
+            "nodelist": get_local_vm(os.environ["AIRFLOW_CONN_INGEST_API_CONNECTION"]),
+            "mem": "2G"}},
     )
 
     t_send_create_dataset = PythonOperator(
