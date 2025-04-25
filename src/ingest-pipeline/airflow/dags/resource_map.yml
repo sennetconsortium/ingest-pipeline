@@ -35,12 +35,14 @@ resource_map:
       - 'task_re': '.*'
         'queue': 'APPS'
         'threads': 6
-  - 'dag_re': 'geomx'
+  - 'dag_re': 'phenocycler_deepcell'
     'preserve_scratch': true
     'lanes': 1
-    # 'lanes': 6
     'tasks':
-      - 'task_re': '.*cwl.*|.*cmd.*|.*exec'
+      - 'task_re': '.*segmentation'
+        'queue': 'GPU'
+        'threads': 6
+      - 'task_re': '(.*(?:cwl))(?!(?:segmentation)).*|.*cmd.*'
         'queue': 'COMPUTE'
         'threads': 6
       - 'task_re': '.*'
@@ -49,14 +51,12 @@ resource_map:
   - 'dag_re': 'geomx'
     'preserve_scratch': true
     'lanes': 1
-    # 'lanes': 6
-    'instance_type': 'r6i.2xlarge'
     'tasks':
       - 'task_re': '.*cwl.*|.*cmd.*|.*exec'
-        'queue': 'processing'
+        'queue': 'COMPUTE'
         'threads': 6
       - 'task_re': '.*'
-        'queue': 'general'
+        'queue': 'APPS'
         'threads': 6
   - 'dag_re': 'ometiff_pyramid'
     'preserve_scratch': true
