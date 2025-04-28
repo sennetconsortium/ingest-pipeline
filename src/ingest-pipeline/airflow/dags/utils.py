@@ -1015,7 +1015,7 @@ def pythonop_send_create_dataset(**kwargs) -> str:
     # Added path prefix to avoid copying over moving for moonshot infrastructure
     dct = airflow_conf.as_dict(display_sensitive=True)["connections"]
     if "PATH_PREFIX" in dct:
-        abs_path = dct["PATH_PREFIX"] + abs_path
+        abs_path = dct["PATH_PREFIX"].strip("'") + abs_path
     kwargs["ti"].xcom_push(key="group_uuid", value=group_uuid)
     kwargs["ti"].xcom_push(key="derived_dataset_uuid", value=uuid)
     kwargs["ti"].xcom_push(key="previous_revision_path", value=previous_revision_path)
