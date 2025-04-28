@@ -412,12 +412,16 @@ with HMDAG(
         t_log_info
         >> t_find_uuid
         >> t_create_tmpdir
+
         >> t_split_stage_1
         >> t_maybe_keep_1
+
         >> t_split_stage_2
         >> t_maybe_keep_2
+
         >> t_run_md_extract
         >> t_md_consistency_tests
+
         >> t_send_status
         >> t_join
         >> t_preserve_info
