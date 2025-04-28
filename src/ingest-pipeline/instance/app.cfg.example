@@ -29,7 +29,8 @@ DOCKER_MOUNT_PATH = '/usr/local/airflow/lz/'
 SRC_PATH = '/usr/src/app/src'
 
 # Path to temporary storage for workflow as seen by airflow
-WORKFLOW_SCRATCH = '/hive/hubmap-dev/scratch'
+WORKFLOW_SCRATCH = '/hive/codcc-dev/scratch'
+PATH_PREFIX = '/mmfs1/data/sennet/'
 
 # Group to which output directories are set, typically shared with Globus
 OUTPUT_GROUP_NAME = 'dataaccessgroup'
