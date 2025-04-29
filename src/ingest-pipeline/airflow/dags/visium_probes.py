@@ -133,9 +133,13 @@ with HMDAG(
         probe_set = metadata_df.oligo_probe_panel.iloc[0]
         probe_set_version = 2 if "v2" in probe_set else 1
 
-        input_parameters = [
+        cwl_parameters = [
             {"parameter_name": "--outdir", "value": str(tmpdir / "cwl_out")},
             {"parameter_name": "--parallel", "value": ""},
+        ]
+
+        input_parameters = [
+
             {"parameter_name": "--assay", "value": "visium-ff"},
             {"parameter_name": "--threads", "value": get_threads_resource(dag.dag_id)},
             {"parameter_name": "--fastq_dir", "value": str(data_dir / "raw/fastq/")},
@@ -145,7 +149,7 @@ with HMDAG(
         ]
 
         command = get_cwl_cmd_from_workflows(
-            cwl_workflows, 0, input_parameters, tmpdir, kwargs["ti"]
+            cwl_workflows, 0, input_parameters, tmpdir, kwargs["ti"], cwl_parameters
         )
 
         return join_quote_command_str(command)
