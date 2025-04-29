@@ -178,10 +178,6 @@ with HMDAG(
             "bail_op": "set_dataset_error",
             "test_op": "pipeline_exec_cwl2",
         },
-        executor_config={"SlurmExecutor": {
-            "output": "/home/codcc/airflow-logs/slurm/%x_%N_%j.out",
-            "nodelist": get_local_vm(os.environ["AIRFLOW_CONN_INGEST_API_CONNECTION"]),
-            "mem": "2G"}},
     )
 
     t_maybe_create_dataset = BranchPythonOperator(
