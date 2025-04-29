@@ -53,7 +53,8 @@ default_args = {
     "retry_delay": timedelta(minutes=1),
     "xcom_push": True,
     "executor_config": {"SlurmExecutor": {"output": "/home/codcc/airflow-logs/slurm/%x_%N_%j.out",
-                                          "nodelist": get_local_vm(os.environ["AIRFLOW_CONN_INGEST_API_CONNECTION"])}},
+                                          "nodelist": get_local_vm(os.environ["AIRFLOW_CONN_INGEST_API_CONNECTION"]),
+                                          "mem": "2G"}},
     "queue": get_queue_resource("reorganize_upload"),
 }
 
@@ -411,12 +412,16 @@ with HMDAG(
         t_log_info
         >> t_find_uuid
         >> t_create_tmpdir
+
         >> t_split_stage_1
         >> t_maybe_keep_1
+
         >> t_split_stage_2
         >> t_maybe_keep_2
+
         >> t_run_md_extract
         >> t_md_consistency_tests
+
         >> t_send_status
         >> t_join
         >> t_preserve_info

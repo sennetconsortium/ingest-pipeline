@@ -18,8 +18,7 @@ from hubmap_operators.common_operators import (
 
 import utils
 from utils import (
-    get_absolute_workflows,
-    get_cwltool_base_cmd,
+    get_absolute_workflow,
     get_dataset_uuid,
     get_parent_dataset_uuids_list,
     get_parent_data_dir,
@@ -34,8 +33,8 @@ from utils import (
     get_threads_resource,
     get_preserve_scratch_resource,
     get_local_vm,
+    get_cwl_cmd_from_workflows,
 )
-
 
 # after running this DAG you should have on disk
 # 1. 1 OME.TIFF pyramid per OME.TIFF in the original dataset
@@ -67,17 +66,26 @@ with HMDAG(
         "preserve_scratch": get_preserve_scratch_resource("ometiff_pyramid"),
     },
 ) as dag:
-
-
     # does the name need to match the filename?
     pipeline_name = "ometiff_pyramid"
-
-    cwl_workflows = get_absolute_workflows(
-        # this workflow creates the image pyramid
-        Path("ome-tiff-pyramid", "pipeline.cwl"),
-        # this workflow computes the offsets
-        Path("portal-containers", "ome-tiff-offsets.cwl"),
+    workflow_version = "1.0.0"
+    workflow_description = (
+        "The Image Pyramid pipeline converts OME-TIFF images into OME-TIFF pyramids."
     )
+
+    # Because PosixPath objects are non JSON-serializable, we have to cast them as str
+    cwl_workflows = [
+        {
+            "workflow_path": str(get_absolute_workflow(Path("ome-tiff-pyramid", "pipeline.cwl"))),
+            "documentation_url": "",
+        },
+        {
+            "workflow_path": str(
+                get_absolute_workflow(Path("portal-containers", "ome-tiff-offsets.cwl"))
+            ),
+            "documentation_url": "",
+        },
+    ]
 
     def build_dataset_name(**kwargs):
         return inner_build_dataset_name(dag.dag_id, pipeline_name, **kwargs)
@@ -97,15 +105,13 @@ with HMDAG(
         data_dir = get_parent_data_dir(**kwargs)
         print("data_dir: ", data_dir)
 
-        # this is the call to the CWL
-        command = [
-            *get_cwltool_base_cmd(tmpdir),
-            cwl_workflows[0],
-            "--processes",
-            get_threads_resource(dag.dag_id),
-            "--ometiff_directory",
-            data_dir,
+        input_parameters = [
+            {"parameter_name": "--processes", "value": get_threads_resource(dag.dag_id)},
+            {"parameter_name": "--ometiff_directory", "value": str(data_dir)},
         ]
+        command = get_cwl_cmd_from_workflows(
+            cwl_workflows, 0, input_parameters, tmpdir, kwargs["ti"]
+        )
 
         return join_quote_command_str(command)
 
@@ -120,7 +126,6 @@ with HMDAG(
         bash_command=""" \
         tmp_dir={{tmp_dir_path(run_id)}} ; \
         mkdir -p ${tmp_dir}/cwl_out ; \
-        cd ${tmp_dir}/cwl_out ; \
         {{ti.xcom_pull(task_ids='build_cmd1')}} > $tmp_dir/session.log 2>&1 ; \
         echo $?
         """,
@@ -137,13 +142,14 @@ with HMDAG(
         tmpdir = get_tmp_dir_path(run_id)
         print("tmpdir: ", tmpdir)
 
-        # this is the call to the CWL
-        command = [
-            *get_cwltool_base_cmd(tmpdir),
-            cwl_workflows[1],
-            "--input_directory",
-            "./ometiff-pyramids",
+        workflows = kwargs["ti"].xcom_pull(key="cwl_workflows", task_ids="build_cmd1")
+        input_parameters = [
+            {
+                "parameter_name": "--input_directory",
+                "value": str(tmpdir / "cwl_out/ometiff-pyramids"),
+            },
         ]
+        command = get_cwl_cmd_from_workflows(workflows, 1, input_parameters, tmpdir, kwargs["ti"])
 
         return join_quote_command_str(command)
 
@@ -157,7 +163,6 @@ with HMDAG(
         task_id="pipeline_exec_cwl2",
         bash_command=""" \
         tmp_dir={{tmp_dir_path(run_id)}} ; \
-        cd ${tmp_dir}/cwl_out ; \
         {{ti.xcom_pull(task_ids='build_cmd2')}} >> $tmp_dir/session.log 2>&1 ; \
         echo $?
         """,
@@ -169,9 +174,23 @@ with HMDAG(
         python_callable=utils.pythonop_maybe_keep,
         provide_context=True,
         op_kwargs={
-            "next_op": "move_data",
+            "next_op": "maybe_create_dataset",
             "bail_op": "set_dataset_error",
             "test_op": "pipeline_exec_cwl2",
+        },
+        executor_config={"SlurmExecutor": {
+            "output": "/home/codcc/airflow-logs/slurm/%x_%N_%j.out",
+            "nodelist": get_local_vm(os.environ["AIRFLOW_CONN_INGEST_API_CONNECTION"]),
+            "mem": "2G"}},
+    )
+
+    t_maybe_create_dataset = BranchPythonOperator(
+        task_id="maybe_create_dataset",
+        python_callable=utils.pythonop_dataset_dryrun,
+        provide_context=True,
+        op_kwargs={
+            "next_op": "send_create_dataset",
+            "bail_op": "join",
         },
     )
 
@@ -190,7 +209,8 @@ with HMDAG(
         executor_config={
             "SlurmExecutor": {"output": "/home/codcc/airflow-logs/slurm/%x_%N_%j.out",
                               "nodelist": get_local_vm(
-                                  os.environ["AIRFLOW_CONN_INGEST_API_CONNECTION"])}},
+                                  os.environ["AIRFLOW_CONN_INGEST_API_CONNECTION"]),
+                              "mem": "2G"}},
     )
 
     t_set_dataset_error = PythonOperator(
@@ -206,7 +226,8 @@ with HMDAG(
         executor_config={
             "SlurmExecutor": {"output": "/home/codcc/airflow-logs/slurm/%x_%N_%j.out",
                               "nodelist": get_local_vm(
-                                  os.environ["AIRFLOW_CONN_INGEST_API_CONNECTION"])}},
+                                  os.environ["AIRFLOW_CONN_INGEST_API_CONNECTION"]),
+                              "mem": "2G"}},
     )
 
     # next_op if true, bail_op if false. test_op returns value for testing.
@@ -224,7 +245,11 @@ with HMDAG(
     send_status_msg = make_send_status_msg_function(
         dag_file=__file__,
         retcode_ops=["pipeline_exec_cwl1", "pipeline_exec_cwl2", "move_data"],
-        cwl_workflows=cwl_workflows,
+        cwl_workflows=lambda **kwargs: kwargs["ti"].xcom_pull(
+            key="cwl_workflows", task_ids="build_cmd2"
+        ),
+        workflow_description=workflow_description,
+        workflow_version=workflow_version,
     )
     t_send_status = PythonOperator(
         task_id="send_status_msg",
@@ -233,53 +258,49 @@ with HMDAG(
         executor_config={
             "SlurmExecutor": {"output": "/home/codcc/airflow-logs/slurm/%x_%N_%j.out",
                               "nodelist": get_local_vm(
-                                  os.environ["AIRFLOW_CONN_INGEST_API_CONNECTION"])}},
+                                  os.environ["AIRFLOW_CONN_INGEST_API_CONNECTION"]),
+                              "mem": "2G"}},
     )
 
     t_log_info = LogInfoOperator(task_id="log_info",
                                  executor_config={"SlurmExecutor": {
                                      "output": "/home/codcc/airflow-logs/slurm/%x_%N_%j.out",
                                      "nodelist": get_local_vm(
-                                         os.environ["AIRFLOW_CONN_INGEST_API_CONNECTION"])}},
+                                         os.environ["AIRFLOW_CONN_INGEST_API_CONNECTION"]),
+                                     "mem": "2G"}},
                                  )
     t_join = JoinOperator(task_id="join",
                           executor_config={"SlurmExecutor": {
                               "output": "/home/codcc/airflow-logs/slurm/%x_%N_%j.out",
                               "nodelist": get_local_vm(
-                                  os.environ["AIRFLOW_CONN_INGEST_API_CONNECTION"])}},
+                                  os.environ["AIRFLOW_CONN_INGEST_API_CONNECTION"]),
+                              "mem": "2G"}},
                           )
     t_create_tmpdir = CreateTmpDirOperator(task_id="create_tmpdir",
                                            executor_config={"SlurmExecutor": {
                                                "output": "/home/codcc/airflow-logs/slurm/%x_%N_%j.out",
                                                "nodelist": get_local_vm(os.environ[
-                                                                             "AIRFLOW_CONN_INGEST_API_CONNECTION"])}},
+                                                                             "AIRFLOW_CONN_INGEST_API_CONNECTION"]),
+                                               "mem": "2G"}},
                                            )
     t_cleanup_tmpdir = CleanupTmpDirOperator(task_id="cleanup_tmpdir",
                                              executor_config={"SlurmExecutor": {
                                                  "output": "/home/codcc/airflow-logs/slurm/%x_%N_%j.out",
                                                  "nodelist": get_local_vm(os.environ[
-                                                                               "AIRFLOW_CONN_INGEST_API_CONNECTION"])}},
+                                                                               "AIRFLOW_CONN_INGEST_API_CONNECTION"]),
+                                                 "mem": "2G"}},
                                              )
-    t_set_dataset_processing = SetDatasetProcessingOperator(task_id="set_dataset_processing",
-                                                            executor_config={"SlurmExecutor": {
-                                                                "output": "/home/codcc/airflow-logs/slurm/%x_%N_%j.out",
-                                                                "nodelist": get_local_vm(
-                                                                    os.environ[
-                                                                        "AIRFLOW_CONN_INGEST_API_CONNECTION"])}},
-                                                            )
     t_move_data = MoveDataOperator(task_id="move_data",
                                    executor_config={"SlurmExecutor": {
                                        "output": "/home/codcc/airflow-logs/slurm/%x_%N_%j.out",
                                        "nodelist": get_local_vm(
-                                           os.environ["AIRFLOW_CONN_INGEST_API_CONNECTION"])}},
+                                           os.environ["AIRFLOW_CONN_INGEST_API_CONNECTION"]),
+                                       "mem": "2G"}},
                                    )
-
     # DAG
     (
         t_log_info
         >> t_create_tmpdir
-        >> t_send_create_dataset
-        >> t_set_dataset_processing
 
         >> prepare_cwl1
         >> t_build_cmd1
@@ -290,7 +311,9 @@ with HMDAG(
         >> t_build_cmd2
         >> t_pipeline_exec_cwl2
         >> t_maybe_keep_cwl2
+        >> t_maybe_create_dataset
 
+        >> t_send_create_dataset
         >> t_move_data
         >> t_send_status
         >> t_join
@@ -298,4 +321,5 @@ with HMDAG(
     t_maybe_keep_cwl1 >> t_set_dataset_error
     t_maybe_keep_cwl2 >> t_set_dataset_error
     t_set_dataset_error >> t_join
+    t_maybe_create_dataset >> t_join
     t_join >> t_cleanup_tmpdir

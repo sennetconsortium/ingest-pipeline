@@ -42,7 +42,8 @@ default_args = {
     "xcom_push": True,
     "queue": get_queue_resource("launch_multi_analysis"),
     "executor_config": {"SlurmExecutor": {"output": "/home/codcc/airflow-logs/slurm/%x_%N_%j.out",
-                                          "nodelist": get_local_vm(os.environ["AIRFLOW_CONN_INGEST_API_CONNECTION"])}},
+                                          "nodelist": get_local_vm(os.environ["AIRFLOW_CONN_INGEST_API_CONNECTION"]),
+                                          "mem": "2G"}},
     "on_failure_callback": utils.create_dataset_state_error_callback(get_uuid_for_error),
 }
 
@@ -141,6 +142,7 @@ with HMDAG(
             print(f"filtered paths: {lz_path}")
             print(f"filtered uuids: {uuid}")
             print(f"filtered previous_version_uuid: {prev_version_uuid}")
+            prev_version_uuid = None
         kwargs["ti"].xcom_push(key="collectiontype", value=collection_type)
         kwargs["ti"].xcom_push(key="uuids", value=filtered_uuid_l)
 

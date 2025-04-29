@@ -42,7 +42,8 @@ default_args = {
     "xcom_push": True,
     "queue": get_queue_resource("launch_multi_analysis"),
     "executor_config": {"SlurmExecutor": {"output": "/home/codcc/airflow-logs/slurm/%x_%N_%j.out",
-                                          "nodelist": get_local_vm(os.environ["AIRFLOW_CONN_INGEST_API_CONNECTION"])}},
+                                          "nodelist": get_local_vm(os.environ["AIRFLOW_CONN_INGEST_API_CONNECTION"]),
+                                          "mem": "2G"}},
     "on_failure_callback": utils.create_dataset_state_error_callback(get_uuid_for_error),
 }
 
@@ -187,6 +188,7 @@ with HMDAG(
             "previous_version_uuid": prev_version_uuid,
             "metadata": metadata_list,
             "dag_provenance_list": utils.get_git_provenance_list(__file__),
+            "dryrun": kwargs["dag_run"].conf.get("dryrun", False),
         }
         for next_dag in utils.downstream_workflow_iter(collectiontype, assay_type):
             yield next_dag, payload

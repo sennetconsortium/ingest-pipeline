@@ -101,7 +101,8 @@ with HMDAG(
         python_callable=find_uuid,
         provide_context=True,
         executor_config={"SlurmExecutor": {"output": "/home/codcc/airflow-logs/slurm/%x_%N_%j.out",
-                                           "nodelist": get_local_vm(os.environ["AIRFLOW_CONN_INGEST_API_CONNECTION"])}},
+                                           "nodelist": get_local_vm(os.environ["AIRFLOW_CONN_INGEST_API_CONNECTION"]),
+                                           "mem": "2G"}},
     )
 
     def run_validation(**kwargs):
@@ -193,20 +194,23 @@ with HMDAG(
         executor_config={
             "SlurmExecutor": {"output": "/home/codcc/airflow-logs/slurm/%x_%N_%j.out",
                               "nodelist": get_local_vm(
-                                  os.environ["AIRFLOW_CONN_INGEST_API_CONNECTION"])}},
+                                  os.environ["AIRFLOW_CONN_INGEST_API_CONNECTION"]),
+                              "mem": "2G"}},
     )
 
     t_create_tmpdir = CreateTmpDirOperator(task_id="create_temp_dir",
                                            executor_config={"SlurmExecutor": {
                                                "output": "/home/codcc/airflow-logs/slurm/%x_%N_%j.out",
                                                "nodelist": get_local_vm(os.environ[
-                                                                             "AIRFLOW_CONN_INGEST_API_CONNECTION"])}},
+                                                                             "AIRFLOW_CONN_INGEST_API_CONNECTION"]),
+                                               "mem": "2G"}},
                                            )
     t_cleanup_tmpdir = CleanupTmpDirOperator(task_id="cleanup_temp_dir",
                                              executor_config={"SlurmExecutor": {
                                                  "output": "/home/codcc/airflow-logs/slurm/%x_%N_%j.out",
                                                  "nodelist": get_local_vm(os.environ[
-                                                                               "AIRFLOW_CONN_INGEST_API_CONNECTION"])}},
+                                                                               "AIRFLOW_CONN_INGEST_API_CONNECTION"]),
+                                                 "mem": "2G"}},
                                              )
 
     (
