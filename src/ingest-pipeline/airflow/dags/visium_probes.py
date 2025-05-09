@@ -90,11 +90,11 @@ with HMDAG(
             "documentation_url": "",
         },
         {
-            "workflow_path": str(get_absolute_workflow(Path("omet-tiff-pyramid", "pipeline.cwl"))),
+            "workflow_path": str(get_absolute_workflow(Path("ome-tiff-pyramid", "pipeline.cwl"))),
             "documentation_url": "",
         },
         {
-            "workflow_path": str(get_absolute_workflow(Path("portal-containers", "omet-tiff-offsets.cwl"))),
+            "workflow_path": str(get_absolute_workflow(Path("portal-containers", "ome-tiff-offsets.cwl"))),
             "documentation_url": "",
         }
     ]
