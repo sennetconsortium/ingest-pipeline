@@ -161,11 +161,15 @@ with HMDAG(
 
         workflows = kwargs["ti"].xcom_pull(key="cwl_workflows", task_ids="build_cmd1")
 
+        cwl_parameters = [
+            {"parameter_name": "--outdir", "value": str(tmpdir / "cwl_out/hubmap_ui")},
+        ]
+
         input_parameters = [
             {"parameter_name": "--input_dir", "value": ".."},
         ]
         command = get_cwl_cmd_from_workflows(
-            workflows, 1, input_parameters, tmpdir, kwargs["ti"]
+            workflows, 1, input_parameters, tmpdir, kwargs["ti"], cwl_parameters
         )
 
         return join_quote_command_str(command)
@@ -177,11 +181,15 @@ with HMDAG(
 
         workflows = kwargs["ti"].xcom_pull(key="cwl_workflows", task_ids="build_cmd2")
 
+        cwl_parameters = [
+            {"parameter_name": "--outdir", "value": str(tmpdir / "cwl_out/hubmap_ui")},
+        ]
+
         input_parameters = [
             {"parameter_name": "--input_dir", "value": ".."},
         ]
         command = get_cwl_cmd_from_workflows(
-            workflows, 2, input_parameters, tmpdir, kwargs["ti"]
+            workflows, 2, input_parameters, tmpdir, kwargs["ti"], cwl_parameters
         )
 
         return join_quote_command_str(command)
@@ -265,6 +273,7 @@ with HMDAG(
         task_id="pipeline_exec",
         bash_command=""" \
         tmp_dir={{tmp_dir_path(run_id)}} ; \
+        mkdir -p ${tmp_dir)/cwl_out ; \
         {{ti.xcom_pull(task_ids='build_cmd1')}} > $tmp_dir/session.log 2>&1 ; \
         echo $?
         """,
@@ -275,9 +284,7 @@ with HMDAG(
         bash_command=""" \
         tmp_dir={{tmp_dir_path(run_id)}} ; \
         ds_dir="{{ti.xcom_pull(task_ids="send_create_dataset")}}" ; \
-        cd "$tmp_dir"/cwl_out ; \
-        mkdir -p hubmap_ui ; \
-        cd hubmap_ui ; \
+        mkdir -p ${tmp_dir}/cwl_out/hubmap_ui ; \
         {{ti.xcom_pull(task_ids='build_cmd2')}} >> $tmp_dir/session.log 2>&1 ; \
         echo $?
         """,
@@ -288,9 +295,6 @@ with HMDAG(
         bash_command=""" \
         tmp_dir={{tmp_dir_path(run_id)}} ; \
         ds_dir="{{ti.xcom_pull(task_ids="send_create_dataset")}}" ; \
-        cd "$tmp_dir"/cwl_out ; \
-        mkdir -p hubmap_ui ; \
-        cd hubmap_ui ; \
         {{ti.xcom_pull(task_ids='build_cmd3')}} >> $tmp_dir/session.log 2>&1 ; \
         echo $?
         """,
@@ -300,8 +304,6 @@ with HMDAG(
         task_id="pipeline_exec_cwl_ome_tiff_pyramid",
         bash_command=""" \
         tmp_dir={{tmp_dir_path(run_id)}} ; \
-        mkdir -p ${tmp_dir}/cwl_out ; \
-        cd ${tmp_dir}/cwl_out ; \
         {{ti.xcom_pull(task_ids='build_cmd4')}} >> $tmp_dir/session.log 2>&1 ; \
         echo $?
         """,
@@ -311,7 +313,6 @@ with HMDAG(
         task_id="pipeline_exec_cwl_ome_tiff_offsets",
         bash_command=""" \
         tmp_dir={{tmp_dir_path(run_id)}} ; \
-        cd ${tmp_dir}/cwl_out ; \
         {{ti.xcom_pull(task_ids='build_cmd5')}} >> ${tmp_dir}/session.log 2>&1 ; \
         echo $?
         """,
