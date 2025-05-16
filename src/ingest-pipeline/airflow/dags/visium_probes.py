@@ -166,7 +166,7 @@ with HMDAG(
         ]
 
         input_parameters = [
-            {"parameter_name": "--input_dir", "value": ".."},
+            {"parameter_name": "--input_dir", "value": str(tmpdir / "cwl_out")},
         ]
         command = get_cwl_cmd_from_workflows(
             workflows, 1, input_parameters, tmpdir, kwargs["ti"], cwl_parameters
