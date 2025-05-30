@@ -70,10 +70,13 @@ resource_map:
         'threads': 6
   - 'dag_re': 'rna_with_probes'
     'preserve_scratch': true
-    'lanes': 2
+    'lanes': 1
     'tasks':
+      - 'task_re': '.*cwl.*|.*exec|.*cmd.*|.*ui.*'
+        'queue': 'COMPUTE'
+        'threads': 6
       - 'task_re': '.*'
-        'queue': 'general'
+        'queue': 'APPS'
         'threads': 6
   - 'dag_re': 'launch_checksums'
     'preserve_scratch': true

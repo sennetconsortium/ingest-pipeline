@@ -21,13 +21,13 @@ from utils import (
     get_absolute_workflow,
     get_dataset_uuid,
     get_parent_dataset_uuids_list,
-    get_parent_data_dir,
     build_dataset_name as inner_build_dataset_name,
     get_previous_revision_uuid,
     get_uuid_for_error,
     join_quote_command_str,
     make_send_status_msg_function,
     get_tmp_dir_path,
+    pythonop_get_dataset_state,
     HMDAG,
     get_queue_resource,
     get_threads_resource,
@@ -37,7 +37,6 @@ from utils import (
 )
 
 from extra_utils import build_tag_containers
-
 
 default_args = {
     "owner": "hubmap",
