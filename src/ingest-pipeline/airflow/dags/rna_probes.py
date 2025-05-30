@@ -34,6 +34,7 @@ from utils import (
     get_preserve_scratch_resource,
     get_local_vm,
     get_cwl_cmd_from_workflows,
+    get_parent_data_dir,
 )
 
 from extra_utils import build_tag_containers
