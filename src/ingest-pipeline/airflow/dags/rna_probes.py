@@ -154,6 +154,7 @@ with HMDAG(
             {"parameter_name": "--threads", "value": get_threads_resource(dag.dag_id)},
             {"parameter_name": "--organism", "value": source_type},
             {"parameter_name": "--fastq_dir", "value": str(data_dir)},
+            {"parameter_name": "--metadata_dir", "value": str(data_dir)},
         ]
 
         command = get_cwl_cmd_from_workflows(
