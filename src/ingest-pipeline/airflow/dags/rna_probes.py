@@ -98,6 +98,8 @@ with HMDAG(
             "documentation_url": "",
         },
     ]
+    workflow_description = ""
+    workflow_version = "1.0.0"
 
     def build_dataset_name(**kwargs):
         return inner_build_dataset_name(dag.dag_id, "rna-probes-pipeline", **kwargs)
@@ -388,6 +390,8 @@ with HMDAG(
         cwl_workflows=lambda **kwargs: kwargs["ti"].xcom_pull(
             key="cwl_workflows", task_ids="build_cmd4"
         ),
+        workflow_description=workflow_description,
+        workflow_version=workflow_version,
     )
 
     t_send_status = PythonOperator(
