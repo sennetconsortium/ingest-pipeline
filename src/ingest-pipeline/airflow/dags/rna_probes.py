@@ -180,8 +180,11 @@ with HMDAG(
 
         input_parameters = [
             {"parameter_name": "--reference", "value": organ_code},
-            {"parameter_name": "--matrix", "value": "expr.h5ad"},
-            {"parameter_name": "--secondary-analysis-matrix", "value": "secondary_analysis.h5ad"},
+            {"parameter_name": "--matrix", "value": str(tmpdir / "cwl_out/expr.h5ad")},
+            {
+                "parameter_name": "--secondary-analysis-matrix",
+                "value": str(tmpdir / "cwl_out/secondary_analysis.h5ad"),
+            },
             {"parameter_name": "--assay", "value": "10x_v3"},
         ]
 
