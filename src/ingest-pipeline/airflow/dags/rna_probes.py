@@ -82,7 +82,7 @@ with HMDAG(
             "documentation_url": "",
         },
         {
-            "workflow_path": str(get_absolute_workflow(Path("azimuth-annotate", "pipeline.cwl"))),
+            "workflow_path": str(get_absolute_workflow(Path("pan-organ-azimuth-annotate", "pipeline.cwl"))),
             "documentation_url": "",
         },
         {
@@ -169,23 +169,13 @@ with HMDAG(
         print("tmpdir: ", tmpdir)
 
         # get organ type
-        ds_rslt = pythonop_get_dataset_state(
-                    dataset_uuid_callable=lambda **kwargs:
-                    get_parent_dataset_uuids_list(**kwargs)[0], **kwargs)
-
-        organ_list = list(set(ds_rslt["organs"]))
-        organ_code = organ_list[0] if len(organ_list) == 1 else "multi"
-
         workflows = kwargs["ti"].xcom_pull(key="cwl_workflows", task_ids="build_cmd1")
 
         input_parameters = [
-            {"parameter_name": "--reference", "value": organ_code},
-            {"parameter_name": "--matrix", "value": str(tmpdir / "cwl_out/expr.h5ad")},
             {
                 "parameter_name": "--secondary-analysis-matrix",
                 "value": str(tmpdir / "cwl_out/secondary_analysis.h5ad"),
-            },
-            {"parameter_name": "--assay", "value": "10x_v3"},
+            }
         ]
 
         command = get_cwl_cmd_from_workflows(
