@@ -173,7 +173,7 @@ with HMDAG(
 
         input_parameters = [
             {
-                "parameter_name": "--secondary-analysis-matrix",
+                "parameter_name": "--secondary_analysis_matrix",
                 "value": str(tmpdir / "cwl_out/secondary_analysis.h5ad"),
             }
         ]
