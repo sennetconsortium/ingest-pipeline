@@ -19,6 +19,7 @@ from utils import (
     pythonop_get_dataset_state,
     get_threads_resource,
     get_tmp_dir_path,
+    get_local_vm,
 )
 from status_change.status_manager import StatusChanger, Statuses
 
@@ -51,6 +52,9 @@ default_args = {
     "retry_delay": timedelta(minutes=1),
     "xcom_push": True,
     "queue": get_queue_resource("validate_dataset"),
+    "executor_config": {"SlurmExecutor": {"output": "/home/codcc/airflow-logs/slurm/%x_%N_%j.out",
+                                          "cpus-per-task": str(get_threads_resource("validate_dataset")),
+                                          "mem": "250G"}},
     "on_failure_callback": utils.create_dataset_state_error_callback(get_dataset_uuid),
 }
 
@@ -182,13 +186,36 @@ with HMDAG(
             status=status,
         ).update()
 
+
     t_send_status = PythonOperator(
-        task_id="send_status",
+        task_id="send_status_msg",
         python_callable=send_status_msg,
         provide_context=True,
+        executor_config={
+            "SlurmExecutor": {"output": "/home/codcc/airflow-logs/slurm/%x_%N_%j.out",
+                              "nodelist": get_local_vm(
+                                  os.environ["AIRFLOW_CONN_INGEST_API_CONNECTION"]),
+                              "mem": "2G"}},
     )
 
-    t_create_tmpdir = CreateTmpDirOperator(task_id="create_temp_dir")
-    t_cleanup_tmpdir = CleanupTmpDirOperator(task_id="cleanup_temp_dir")
+    t_create_tmpdir = CreateTmpDirOperator(task_id="create_temp_dir",
+                                           executor_config={"SlurmExecutor": {
+                                               "output": "/home/codcc/airflow-logs/slurm/%x_%N_%j.out",
+                                               "nodelist": get_local_vm(os.environ[
+                                                                            "AIRFLOW_CONN_INGEST_API_CONNECTION"]),
+                                               "mem": "2G"}},
+                                           )
+    t_cleanup_tmpdir = CleanupTmpDirOperator(task_id="cleanup_temp_dir",
+                                             executor_config={"SlurmExecutor": {
+                                                 "output": "/home/codcc/airflow-logs/slurm/%x_%N_%j.out",
+                                                 "nodelist": get_local_vm(os.environ[
+                                                                              "AIRFLOW_CONN_INGEST_API_CONNECTION"]),
+                                                 "mem": "2G"}},
+                                             )
 
-    t_create_tmpdir >> t_run_validation >> t_send_status >> t_cleanup_tmpdir
+    (
+        t_create_tmpdir
+        >> t_run_validation
+        >> t_send_status
+        >> t_cleanup_tmpdir
+    )
