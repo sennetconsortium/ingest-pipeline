@@ -4,7 +4,7 @@ from pathlib import Path
 import pandas as pd
 
 from airflow.operators.bash import BashOperator
-from airflow.operators.dummy import DummyOperator
+from airflow.operators.empty import EmptyOperator
 from airflow.operators.python import BranchPythonOperator, PythonOperator
 from airflow.decorators import task
 
@@ -36,6 +36,8 @@ from utils import (
     get_local_vm,
     get_cwl_cmd_from_workflows,
 )
+
+from extra_utils import build_tag_containers
 
 default_args = {
     "owner": "hubmap",
@@ -112,13 +114,13 @@ with HMDAG(
 
     prepare_cwl1 = prepare_cwl_cmd1()
 
-    prepare_cwl2 = DummyOperator(task_id="prepare_cwl2")
+    prepare_cwl2 = EmptyOperator(task_id="prepare_cwl2")
 
-    prepare_cwl3 = DummyOperator(task_id="prepare_cwl3")
+    prepare_cwl3 = EmptyOperator(task_id="prepare_cwl3")
 
-    prepare_cwl4 = DummyOperator(task_id="prepare_cwl4")
+    prepare_cwl4 = EmptyOperator(task_id="prepare_cwl4")
 
-    prepare_cwl5 = DummyOperator(task_id="prepare_cwl5")
+    prepare_cwl5 = EmptyOperator(task_id="prepare_cwl5")
 
     def build_cwltool_cmd1(**kwargs):
         run_id = kwargs["run_id"]

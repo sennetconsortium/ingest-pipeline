@@ -40,7 +40,6 @@ from utils import (
 
 from misc.tools.split_and_create import reorganize
 
-
 # Following are defaults which can be overridden later on
 default_args = {
     "owner": "hubmap",
@@ -238,7 +237,7 @@ with HMDAG(
                         f"status of Upload {uuid} is not New, or Submitted, {ds_rslt['status']}"
                     )
 
-                work_dirs.append("'{}'".format(ds_rslt["local_directory_full_path"]))
+                work_dirs.append('"{}"'.format(ds_rslt["local_directory_full_path"]))
             work_dirs = " ".join(work_dirs)
             kwargs["ti"].xcom_push(key="child_work_dirs", value=work_dirs)
             kwargs["ti"].xcom_push(key="child_uuid_list", value=child_uuid_list)

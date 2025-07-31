@@ -6,7 +6,7 @@ from typing import List
 
 from airflow import DAG
 from airflow.operators.bash import BashOperator
-from airflow.operators.dummy import DummyOperator
+from airflow.operators.empty import EmptyOperator
 from airflow.operators.python import BranchPythonOperator, PythonOperator
 from airflow.decorators import task
 
@@ -38,6 +38,7 @@ from utils import (
     get_preserve_scratch_resource,
     get_local_vm,
     get_cwl_cmd_from_workflows,
+    gather_calculated_metadata,
 )
 
 from extra_utils import build_tag_containers
@@ -54,12 +55,14 @@ MultiomeSequencingDagParameters = namedtuple(
     ],
 )
 
+
 def find_atac_metadata_file(data_dir: Path) -> Path:
     for path in data_dir.glob("*.tsv"):
         name_lower = path.name.lower()
         if path.is_file() and "atac" in name_lower and "metadata" in name_lower:
             return path
     raise ValueError("Couldn't find ATAC-seq metadata file")
+
 
 def generate_multiome_dag(params: MultiomeSequencingDagParameters) -> DAG:
     default_args = {
@@ -89,7 +92,7 @@ def generate_multiome_dag(params: MultiomeSequencingDagParameters) -> DAG:
         },
     ) as dag:
         workflow_version = "1.0.0"
-        workflow_description = "The pipeline for multiome RNA-ATACseq data uses Salmon for alignment free quasi mapping of reads from RNA sequencing to the HG38 reference genome and HISAT2 for short read alignment of ATACseq reads to the same genome.  Barcodes are then mapped between components of the assay to generate an annotated data matrix with consolidated RNA and ATACseq data.  This annotated data matrix is then passed to the Muon package for dimensionality reduction, clustering, and multiomic factor analysis.  Cell type annotations are provided by Azimuth when available for the type of tissue being analyzed."
+        workflow_description = "The pipeline for multiome RNA-ATACseq data uses Salmon for alignment free quasi mapping of reads from RNA sequencing to the hg38 reference genome and HISAT2 for short read alignment of ATACseq reads to the same genome.  Barcodes are then mapped between components of the assay to generate an annotated data matrix with consolidated RNA and ATACseq data.  This annotated data matrix is then passed to the Muon package for dimensionality reduction, clustering, and multiomic factor analysis.  Cell type annotations are provided by Azimuth when available for the type of tissue being analyzed."
 
         cwl_workflows = [
             {
@@ -100,7 +103,7 @@ def generate_multiome_dag(params: MultiomeSequencingDagParameters) -> DAG:
             },
             {
                 "workflow_path": str(
-                    get_absolute_workflow(Path("azimuth-annotate", "pipeline.cwl"))
+                    get_absolute_workflow(Path("pan-organ-azimuth-annotate", "pipeline.cwl"))
                 ),
                 "documentation_url": "",
             },
@@ -125,9 +128,9 @@ def generate_multiome_dag(params: MultiomeSequencingDagParameters) -> DAG:
 
         prepare_cwl1 = prepare_cwl_cmd1()
 
-        prepare_cwl2 = DummyOperator(task_id="prepare_cwl2")
+        prepare_cwl2 = EmptyOperator(task_id="prepare_cwl2")
 
-        prepare_cwl3 = DummyOperator(task_id="prepare_cwl3")
+        prepare_cwl3 = EmptyOperator(task_id="prepare_cwl3")
 
         def build_cwltool_cmd1(**kwargs):
             run_id = kwargs["run_id"]
@@ -179,7 +182,10 @@ def generate_multiome_dag(params: MultiomeSequencingDagParameters) -> DAG:
                 if (count := len(atac_metadata_files)) != 1:
                     raise ValueError(f"Need 1 ATAC-seq metadata file, found {count}")
                 input_parameters.append(
-                    {"parameter_name": "--atac_metadata_file", "value": str(atac_metadata_files[0])}
+                    {
+                        "parameter_name": "--atac_metadata_file",
+                        "value": str(atac_metadata_files[0]),
+                    }
                 )
 
             command = get_cwl_cmd_from_workflows(
@@ -195,22 +201,25 @@ def generate_multiome_dag(params: MultiomeSequencingDagParameters) -> DAG:
 
             # get organ type
             ds_rslt = pythonop_get_dataset_state(
-                dataset_uuid_callable=lambda **kwargs:
-                get_parent_dataset_uuids_list(**kwargs)[0], **kwargs)
+                dataset_uuid_callable=lambda **kwargs: get_parent_dataset_uuids_list(**kwargs)[0],
+                **kwargs,
+            )
 
-            organ_list = list(set(ds_rslt["organs"]))
-            organ_code = organ_list[0] if len(organ_list) == 1 else "multi"
+            source_type = ds_rslt.get("source_type", "human")
+            if source_type == "mixed":
+                print("Force failure. Should only be one unique source_type for a dataset.")
 
             workflows = kwargs["ti"].xcom_pull(key="cwl_workflows", task_ids="build_cmd1")
 
             input_parameters = [
-                {"parameter_name": "--reference", "value": organ_code},
-                {"parameter_name": "--matrix", "value": str(tmpdir / "cwl_out/mudata_raw.h5mu")},
                 {
                     "parameter_name": "--secondary-analysis-matrix",
-                    "value": str(tmpdir / "cwl_out/secondary_analysis.h5mu"),
+                    "value": str(tmpdir / "cwl_out/secondary_analysis.h5ad"),
                 },
-                {"parameter_name": "--assay", "value": params.assay_azimuth},
+                {
+                    "parameter_name": "--source",
+                    "value": source_type,
+                },
             ]
             command = get_cwl_cmd_from_workflows(
                 workflows, 1, input_parameters, tmpdir, kwargs["ti"]
@@ -378,6 +387,7 @@ def generate_multiome_dag(params: MultiomeSequencingDagParameters) -> DAG:
             ),
             workflow_description=workflow_description,
             workflow_version=workflow_version,
+            metadata_fun=gather_calculated_metadata,
         )
 
         t_send_status = PythonOperator(

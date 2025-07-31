@@ -6,7 +6,7 @@ import globus_sdk
 from airflow.configuration import conf
 from airflow import configuration
 from airflow.utils.log.logging_mixin import LoggingMixin
-from airflow.providers.fab.auth_manager.security_manager.override import FabAirflowSecurityManagerOverride
+from airflow.www.security import AirflowSecurityManager
 from flask import flash, g, url_for, request
 from flask_appbuilder import expose
 from flask_appbuilder._compat import as_unicode
@@ -139,7 +139,7 @@ class CustomOAuthView(AuthOAuthView):
         return self.authHelper.getUserInfo(token, True)
 
 
-class OIDCSecurityManager(FabAirflowSecurityManagerOverride):
+class OIDCSecurityManager(AirflowSecurityManager):
     """
     Custom security manager class that allows using the OpenID Connection authentication method.
     """
@@ -158,7 +158,7 @@ SECURITY_MANAGER_CLASS = OIDCSecurityManager
 basedir = os.path.abspath(os.path.dirname(__file__))
 
 # The SQLAlchemy connection string.
-SQLALCHEMY_DATABASE_URI = conf.get('database', 'SQL_ALCHEMY_CONN')
+SQLALCHEMY_DATABASE_URI = conf.get('core', 'SQL_ALCHEMY_CONN')
 
 # Flask-WTF flag for CSRF
 WTF_CSRF_ENABLED = True
