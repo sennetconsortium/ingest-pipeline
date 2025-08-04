@@ -2,7 +2,7 @@
 
 # What variables do we need?
 # Define CODCC machines
-# codcc_machines=("c0" "c1" "c2" "c3" "c4" "c5" "g0" "g1")
+# codcc_machines=("b0" "c0" "c1" "c2" "c3" "c4" "c5" "g0" "g1")
 codcc_machines=()
 
 priority_list=("-prod" "-test" "-dev")
