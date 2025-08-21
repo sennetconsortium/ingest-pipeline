@@ -14,7 +14,6 @@ from hubmap_operators.common_operators import (
     JoinOperator,
     LogInfoOperator,
     MoveDataOperator,
-    SetDatasetProcessingOperator,
 )
 
 import utils
@@ -150,7 +149,8 @@ with HMDAG(
         ]
         input_parameters = [
             {"parameter_name": "--assay", "value": "visium-ff"},
-            {"parameter_name": "--threads", "value": get_threads_resource(dag.dag_id)},
+            {"parameter_name": "--threads", "value": get_threads_resource(dag.dag_id,
+                                                                          "build_cmd1")},
             {"parameter_name": "--organism", "value": source_type},
             {"parameter_name": "--fastq_dir", "value": str(data_dir / "raw/fastq")},
             {"parameter_name": "--img_dir", "value": str(data_dir)},
@@ -215,7 +215,8 @@ with HMDAG(
         workflows = kwargs["ti"].xcom_pull(key="cwl_workflows", task_ids="build_cmd3")
 
         input_parameters = [
-            {"parameter_name": "--processes", "value": get_threads_resource(dag.dag_id)},
+            {"parameter_name": "--processes", "value": get_threads_resource(dag.dag_id,
+                                                                            "build_cmd4")},
             {
                 "parameter_name": "--ometiff_directory",
                 "value": str(data_dir / "lab_processed/images/"),

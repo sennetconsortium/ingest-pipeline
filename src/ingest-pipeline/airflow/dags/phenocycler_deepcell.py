@@ -179,7 +179,8 @@ with HMDAG(
 
         input_parameters = [
             {"parameter_name": "--enable_manhole", "value": ""},
-            {"parameter_name": "--processes", "value": get_threads_resource(dag.dag_id)},
+            {"parameter_name": "--processes", "value": get_threads_resource(dag.dag_id,
+                                                                            "build_cmd_sprm")},
             {"parameter_name": "--image_dir", "value": str(data_dir / "pipeline_output/expr")},
             {"parameter_name": "--mask_dir", "value": str(data_dir / "pipeline_output/mask")},
         ]
@@ -280,7 +281,8 @@ with HMDAG(
         )
 
         input_parameters = [
-            {"parameter_name": "--processes", "value": get_threads_resource(dag.dag_id)},
+            {"parameter_name": "--processes", "value": get_threads_resource(dag.dag_id,
+                                                                            "build_cwl_ome_tiff_pyramid")},
             {"parameter_name": "--ometiff_directory", "value": str(tmpdir / "cwl_out")},
         ]
         command = get_cwl_cmd_from_workflows(workflows, 3, input_parameters, tmpdir, kwargs["ti"])
