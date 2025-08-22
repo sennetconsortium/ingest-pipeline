@@ -105,7 +105,8 @@ with HMDAG(
         print("data_dir: ", data_dir)
 
         input_parameters = [
-            {"parameter_name": "--processes", "value": get_threads_resource(dag.dag_id)},
+            {"parameter_name": "--processes", "value": get_threads_resource(dag.dag_id,
+                                                                            "build_cmd1")},
             {"parameter_name": "--ometiff_directory", "value": str(data_dir)},
         ]
         command = get_cwl_cmd_from_workflows(
@@ -187,11 +188,10 @@ with HMDAG(
             "next_op": "send_create_dataset",
             "bail_op": "join",
         },
-        executor_config={
-            "SlurmExecutor": {"output": "/home/codcc/airflow-logs/slurm/%x_%N_%j.out",
-                              "nodelist": get_local_vm(
-                                  os.environ["AIRFLOW_CONN_INGEST_API_CONNECTION"]),
-                              "mem": "2G"}},
+        executor_config={"SlurmExecutor": {
+            "output": "/home/codcc/airflow-logs/slurm/%x_%N_%j.out",
+            "nodelist": get_local_vm(os.environ["AIRFLOW_CONN_INGEST_API_CONNECTION"]),
+            "mem": "2G"}},
     )
 
     # Others
@@ -206,11 +206,10 @@ with HMDAG(
             "dataset_name_callable": build_dataset_name,
             "pipeline_shorthand": "Image Pyramid",
         },
-        executor_config={
-            "SlurmExecutor": {"output": "/home/codcc/airflow-logs/slurm/%x_%N_%j.out",
-                              "nodelist": get_local_vm(
-                                  os.environ["AIRFLOW_CONN_INGEST_API_CONNECTION"]),
-                              "mem": "2G"}},
+        executor_config={"SlurmExecutor": {
+            "output": "/home/codcc/airflow-logs/slurm/%x_%N_%j.out",
+            "nodelist": get_local_vm(os.environ["AIRFLOW_CONN_INGEST_API_CONNECTION"]),
+            "mem": "2G"}},
     )
 
     t_set_dataset_error = PythonOperator(
@@ -223,11 +222,10 @@ with HMDAG(
             "ds_state": "Error",
             "message": "An error occurred in {}".format(pipeline_name),
         },
-        executor_config={
-            "SlurmExecutor": {"output": "/home/codcc/airflow-logs/slurm/%x_%N_%j.out",
-                              "nodelist": get_local_vm(
-                                  os.environ["AIRFLOW_CONN_INGEST_API_CONNECTION"]),
-                              "mem": "2G"}},
+        executor_config={"SlurmExecutor": {
+            "output": "/home/codcc/airflow-logs/slurm/%x_%N_%j.out",
+            "nodelist": get_local_vm(os.environ["AIRFLOW_CONN_INGEST_API_CONNECTION"]),
+            "mem": "2G"}},
     )
 
     # next_op if true, bail_op if false. test_op returns value for testing.
@@ -251,15 +249,15 @@ with HMDAG(
         workflow_description=workflow_description,
         workflow_version=workflow_version,
     )
+
     t_send_status = PythonOperator(
         task_id="send_status_msg",
         python_callable=send_status_msg,
         provide_context=True,
-        executor_config={
-            "SlurmExecutor": {"output": "/home/codcc/airflow-logs/slurm/%x_%N_%j.out",
-                              "nodelist": get_local_vm(
-                                  os.environ["AIRFLOW_CONN_INGEST_API_CONNECTION"]),
-                              "mem": "2G"}},
+        executor_config={"SlurmExecutor": {
+            "output": "/home/codcc/airflow-logs/slurm/%x_%N_%j.out",
+            "nodelist": get_local_vm(os.environ["AIRFLOW_CONN_INGEST_API_CONNECTION"]),
+            "mem": "2G"}},
     )
 
     t_log_info = LogInfoOperator(task_id="log_info",

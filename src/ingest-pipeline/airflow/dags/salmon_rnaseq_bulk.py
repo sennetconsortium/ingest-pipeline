@@ -123,7 +123,8 @@ with HMDAG(
         ]
         input_parameters = [
             {"parameter_name": "--fastq_dir", "value": str(data_dir)},
-            {"parameter_name": "--threads", "value": get_threads_resource(dag.dag_id)},
+            {"parameter_name": "--threads", "value": get_threads_resource(dag.dag_id,
+                                                                          "build_cmd1")},
             {"parameter_name": "--organism", "value": source_type},
         ]
 
