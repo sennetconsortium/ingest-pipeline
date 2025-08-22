@@ -15,7 +15,6 @@ from hubmap_operators.common_operators import (
     JoinOperator,
     LogInfoOperator,
     MoveDataOperator,
-    SetDatasetProcessingOperator,
 )
 
 import utils
@@ -149,7 +148,8 @@ def generate_salmon_rnaseq_dag(params: SequencingDagParameters) -> DAG:
 
             input_parameters = [
                 {"parameter_name": "--assay", "value": params.assay},
-                {"parameter_name": "--threads", "value": get_threads_resource(dag.dag_id)},
+                {"parameter_name": "--threads", "value": get_threads_resource(dag.dag_id,
+                                                                              "build_cmd1")},
                 {"parameter_name": "--organism", "value": source_type},
                 {
                     "parameter_name": "--fastq_dir",

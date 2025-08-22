@@ -170,7 +170,8 @@ with HMDAG(
         )
 
         input_parameters = [
-            {"parameter_name": "--processes", "value": get_threads_resource(dag.dag_id)},
+            {"parameter_name": "--processes", "value": get_threads_resource(dag.dag_id,
+                                                                            "build_cmd2")},
             {"parameter_name": "--ometiff_directory", "value": str(data_dir)},
         ]
         command = get_cwl_cmd_from_workflows(workflows, 1, input_parameters, tmpdir, kwargs["ti"])
@@ -266,7 +267,8 @@ with HMDAG(
         )
 
         input_parameters = [
-            {"parameter_name": "--processes", "value": get_threads_resource(dag.dag_id)},
+            {"parameter_name": "--processes", "value": get_threads_resource(dag.dag_id,
+                                                                            "build_cmd4")},
             {"parameter_name": "--ometiff_directory", "value": str(data_dir / "output_ome_segments")},
         ]
         command = get_cwl_cmd_from_workflows(workflows, 3, input_parameters, tmpdir, kwargs["ti"])
