@@ -132,7 +132,7 @@ resource_map:
       - 'task_re': '.*'
         'queue': 'APPS'
         'threads': 6
-  - 'dag_re': '.xenium'
+  - 'dag_re': 'xenium'
     'preserve_scratch': true
     'lanes': 1
     'tasks':
