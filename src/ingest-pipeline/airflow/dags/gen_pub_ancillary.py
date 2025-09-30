@@ -1,5 +1,7 @@
 import json
 import utils
+import os
+
 from pathlib import Path
 from datetime import datetime, timedelta
 from pprint import pprint
@@ -38,6 +40,7 @@ from utils import (
     get_uuid_for_error,
     create_dataset_state_error_callback,
     make_send_status_msg_function,
+    get_local_vm,
 )
 
 # Following are defaults which can be overridden later on
@@ -52,7 +55,9 @@ default_args = {
     "retries": 1,
     "retry_delay": timedelta(minutes=1),
     "xcom_push": True,
-    "executor_config": {"SlurmExecutor": {"output": "/home/codcc/airflow-logs/slurm/%x_%N_%j.out"}},
+    "executor_config": {"SlurmExecutor": {"output": "/home/codcc/airflow-logs/slurm/%x_%N_%j.out",
+                                          "nodelist": get_local_vm(os.environ["AIRFLOW_CONN_INGEST_API_CONNECTION"]),
+                                          "mem": "2G"}},
     "queue": get_queue_resource("gen_pub_ancillary"),
 }
 
