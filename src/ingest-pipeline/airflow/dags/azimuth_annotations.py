@@ -157,8 +157,8 @@ with HMDAG(
 
         input_parameters = [
             {
-                "parameter_name": "--secondary_analysis-matrix",
-                "value": str(tmpdir / "cwl_out/secondary_analysis.h5mu"),
+                "parameter_name": "--secondary_analysis_matrix",
+                "value": str(tmpdir / "cwl_out" / secondary_analysis),
             },
             {"parameter_name": "--organism", "value": source_type},
         ]
@@ -437,11 +437,13 @@ with HMDAG(
                                                 "nodelist": get_local_vm(os.environ["AIRFLOW_CONN_INGEST_API_CONNECTION"]),
                                                 "mem": "2G"}}, )
     t_join_salmon = JoinOperator(task_id="join_salmon",
+                                 trigger_rule="one_success",
                                  executor_config={"SlurmExecutor": {
                                      "output": "/home/codcc/airflow-logs/slurm/%x_%N_%j.out",
                                      "nodelist": get_local_vm(os.environ["AIRFLOW_CONN_INGEST_API_CONNECTION"]),
                                      "mem": "2G"}},)
     t_join_multiome = JoinOperator(task_id="join_multiome",
+                                   trigger_rule="one_success",
                                    executor_config={"SlurmExecutor": {
                                        "output": "/home/codcc/airflow-logs/slurm/%x_%N_%j.out",
                                        "nodelist": get_local_vm(os.environ["AIRFLOW_CONN_INGEST_API_CONNECTION"]),
