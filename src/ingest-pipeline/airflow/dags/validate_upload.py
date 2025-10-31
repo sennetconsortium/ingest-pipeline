@@ -12,7 +12,7 @@ from hubmap_operators.common_operators import (
     CleanupTmpDirOperator,
     CreateTmpDirOperator,
 )
-from status_change.failure_callback import FailureCallback
+from status_change.callbacks.failure_callback import FailureCallback
 from status_change.status_manager import StatusChanger, Statuses
 from utils import (
     HMDAG,
@@ -79,16 +79,7 @@ with HMDAG(
         print("ds_rslt:")
         pprint(ds_rslt)
 
-        for key in ["entity_type", "status", "uuid", "local_directory_full_path"]:
-            assert key in ds_rslt, f"Dataset status for {uuid} has no {key}"
-
-        if ds_rslt["entity_type"] != "Upload":
-            raise AirflowException(f"{uuid} is not an Upload")
-        if ds_rslt["status"] not in ["New", "Submitted", "Invalid", "Processing"]:
-            raise AirflowException(
-                f"status of Upload {uuid} is not New, Submitted, Invalid, or Processing"
-            )
-
+        # Push to xcom before checking ds_rslt to make UUID available to on_failure_callback
         lz_path = ds_rslt["local_directory_full_path"]
         uuid = ds_rslt["uuid"]  # 'uuid' may  actually be a DOI
         print(f"Finished uuid {uuid}")
@@ -96,12 +87,38 @@ with HMDAG(
         kwargs["ti"].xcom_push(key="lz_path", value=lz_path)
         kwargs["ti"].xcom_push(key="uuid", value=uuid)
 
+        for key in ["entity_type", "status", "uuid", "local_directory_full_path"]:
+            assert key in ds_rslt, f"Dataset status for {uuid} has no {key}"
+
+        if ds_rslt["entity_type"] != "Upload":
+            raise AirflowException(f"{uuid} is not an Upload")
+        if ds_rslt["status"] not in ["New", "Submitted", "Invalid"]:
+            raise AirflowException(f"status of Upload {uuid} is not New, Submitted, or Invalid")
+
     t_find_uuid = PythonOperator(
         task_id="find_uuid",
         python_callable=find_uuid,
         provide_context=True,
         executor_config={"SlurmExecutor": {"output": "/home/codcc/airflow-logs/slurm/%x_%N_%j.out",
                                            "nodelist": get_local_vm(os.environ["AIRFLOW_CONN_INGEST_API_CONNECTION"]),
+                                           "mem": "2G"}},
+    )
+
+    def set_upload_processing(**kwargs):
+        StatusChanger(
+            kwargs["ti"].xcom_pull(key="uuid"),
+            get_auth_tok(**kwargs),
+            status="Processing",
+        ).update()
+
+    t_set_upload_processing = PythonOperator(
+        task_id="set_upload_processing",
+        python_callable=set_upload_processing,
+        provide_context=True,
+        op_kwargs={"dataset_uuid_callable": lambda **kwargs: kwargs["ti"].xcom_pull(key="uuid")},
+        executor_config={"SlurmExecutor": {"output": "/home/codcc/airflow-logs/slurm/%x_%N_%j.out",
+                                           "nodelist": get_local_vm(
+                                               os.environ["AIRFLOW_CONN_INGEST_API_CONNECTION"]),
                                            "mem": "2G"}},
     )
 
@@ -140,7 +157,7 @@ with HMDAG(
         validation_file_path = Path(get_tmp_dir_path(kwargs["run_id"])) / "validation_report.txt"
         with open(validation_file_path, "w") as f:
             f.write(report.as_text())
-        kwargs["ti"].xcom_push(key="error_counts", value=json.dumps(report.counts, indent=9).strip("{}").replace('"', "").replace(",", ""))
+        kwargs["ti"].xcom_push(key="error_counts", value=report.counts)
         kwargs["ti"].xcom_push(key="validation_file_path", value=str(validation_file_path))
 
     t_run_validation = PythonOperator(
@@ -151,7 +168,11 @@ with HMDAG(
 
     def send_status_msg(**kwargs):
         validation_file_path = Path(kwargs["ti"].xcom_pull(key="validation_file_path"))
-        error_counts = Path(kwargs["ti"].xcom_pull(key="error_counts"))
+        error_counts = kwargs["ti"].xcom_pull(key="error_counts")
+        error_counts_print = (
+            json.dumps(error_counts, indent=9).strip("{}").replace('"', "").replace(",", "")
+        )
+        error_counts_msg = "; ".join([f"{k}: {v}" for k, v in error_counts.items()])
         with open(validation_file_path) as f:
             report_txt = f.read()
         if report_txt.startswith("No errors!"):
@@ -177,14 +198,17 @@ with HMDAG(
                 f"""
                 ------------
                 Error counts:
-                {error_counts}
+                {error_counts_print}
                 ------------
-                """)
+                """
+            )
         StatusChanger(
             kwargs["ti"].xcom_pull(key="uuid"),
             get_auth_tok(**kwargs),
             status=status,
             fields_to_overwrite=extra_fields,
+            run_id=kwargs.get("run_id"),
+            message=error_counts_msg,
         ).update()
 
     t_send_status = PythonOperator(
@@ -216,7 +240,8 @@ with HMDAG(
     (
         t_create_tmpdir
         >> t_find_uuid
+        >> t_set_upload_processing
         >> t_run_validation
         >> t_send_status
         >> t_cleanup_tmpdir
-      )
+    )
