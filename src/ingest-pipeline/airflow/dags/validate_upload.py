@@ -92,8 +92,9 @@ with HMDAG(
 
         if ds_rslt["entity_type"] != "Upload":
             raise AirflowException(f"{uuid} is not an Upload")
-        if ds_rslt["status"] not in ["New", "Submitted", "Invalid"]:
-            raise AirflowException(f"status of Upload {uuid} is not New, Submitted, or Invalid")
+        if ds_rslt["status"] not in ["New", "Submitted", "Invalid", "Processing"]:
+            raise AirflowException(f"status of Upload {uuid} {ds_rslt['status']}is not New, "
+                                   f"Submitted, or Invalid")
 
     t_find_uuid = PythonOperator(
         task_id="find_uuid",
