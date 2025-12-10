@@ -2,6 +2,7 @@ import os
 
 from pprint import pprint
 from datetime import datetime, timedelta
+import time
 
 from airflow.operators.python import PythonOperator
 from airflow.exceptions import AirflowException
@@ -35,39 +36,41 @@ def get_uuid_for_error(**kwargs):
 
 
 def get_dataset_uuid(**kwargs):
-    return kwargs['dag_run'].conf['uuid']
+    return kwargs["dag_run"].conf["uuid"]
 
 
 def get_dataset_lz_path(**kwargs):
-    ctx = kwargs['dag_run'].conf
-    return ctx['lz_path']
+    ctx = kwargs["dag_run"].conf
+    return ctx["lz_path"]
 
 
 default_args = {
-    'owner': 'hubmap',
-    'depends_on_past': False,
-    'start_date': datetime(2019, 1, 1),
-    'email': ['joel.welling@gmail.com'],
-    'email_on_failure': False,
-    'email_on_retry': False,
-    'retries': 1,
-    'retry_delay': timedelta(minutes=1),
-    'xcom_push': True,
-    'queue': get_queue_resource('rebuild_metadata'),
+    "owner": "hubmap",
+    "depends_on_past": False,
+    "start_date": datetime(2019, 1, 1),
+    "email": ["joel.welling@gmail.com"],
+    "email_on_failure": False,
+    "email_on_retry": False,
+    "retries": 1,
+    "retry_delay": timedelta(minutes=1),
+    "xcom_push": True,
+    "queue": get_queue_resource("rebuild_metadata"),
     "executor_config": {"SlurmExecutor": {"output": "/home/codcc/airflow-logs/slurm/%x_%N_%j.out",
-                                          "nodelist": get_local_vm(os.environ["AIRFLOW_CONN_INGEST_API_CONNECTION"]),
+                                          "nodelist": get_local_vm(os.environ["AIRFLOW_CONN_AIRFLOW_CONNECTION"]),
                                           "mem": "2G"}},
-    'on_failure_callback': create_dataset_state_error_callback(get_uuid_for_error)
+    "on_failure_callback": create_dataset_state_error_callback(get_uuid_for_error),
 }
 
-with HMDAG('rebuild_processed_dataset_metadata',
-           schedule_interval=None,
-           is_paused_upon_creation=False,
-           default_args=default_args,
-           user_defined_macros={
-               'tmp_dir_path': get_tmp_dir_path,
-               'preserve_scratch': get_preserve_scratch_resource('rebuild_metadata')
-           }) as dag:
+with HMDAG(
+    "rebuild_processed_dataset_metadata",
+    schedule_interval=None,
+    is_paused_upon_creation=False,
+    default_args=default_args,
+    user_defined_macros={
+        "tmp_dir_path": get_tmp_dir_path,
+        "preserve_scratch": get_preserve_scratch_resource("rebuild_metadata"),
+    },
+) as dag:
 
     t_create_tmpdir = CreateTmpDirOperator(task_id="create_temp_dir")
 
@@ -99,9 +102,7 @@ with HMDAG('rebuild_processed_dataset_metadata',
         pprint(kwargs["dag_run"].conf)
 
         try:
-            assert_json_matches_schema(
-                kwargs["dag_run"].conf, "launch_checksums_metadata_schema.yml"
-            )
+            assert_json_matches_schema(kwargs["dag_run"].conf, "rebuild_metadata_schema.yml")
         except AssertionError as e:
             print("invalid metadata follows:")
             pprint(kwargs["dag_run"].conf)
@@ -154,6 +155,7 @@ with HMDAG('rebuild_processed_dataset_metadata',
                 raise AirflowException("send_status_msg returned False")
         except Exception as excp:
             raise AirflowException(f"setting dataset attributes failed: {excp}") from excp
+        time.sleep(240)
 
     t_send_status = PythonOperator(
         task_id="send_status_msg",
@@ -173,4 +175,3 @@ with HMDAG('rebuild_processed_dataset_metadata',
         >> t_send_status  # new metadata is scanned in during this step
         >> t_cleanup_tmpdir
     )
-

@@ -1,6 +1,6 @@
+import inspect
 import os
 import sys
-import inspect
 from datetime import datetime, timedelta
 from pathlib import Path
 from pprint import pprint
@@ -139,16 +139,20 @@ with HMDAG(
             app_context=app_context,
         )
         # Scan reports an error result
-        errors = upload.get_errors(plugin_kwargs=kwargs)
-        if errors:
-            info = upload.get_info()
-            report = ingest_validation_tools_error_report.ErrorReport(errors=errors, info=info)
+        report = ingest_validation_tools_error_report.ErrorReport(
+            errors=upload.get_errors(plugin_kwargs=kwargs), info=upload.get_info()
+        )
+        if report.errors:
             sys.stdout.write("Directory validation failed! Errors follow:\n")
             sys.stdout.write(report.as_text())
             log_fname = os.path.join(utils.get_tmp_dir_path(kwargs["run_id"]), "session.log")
             with open(log_fname, "w") as f:
                 f.write("Directory validation failed! Errors follow:\n")
                 f.write(report.as_text())
+            kwargs["ti"].xcom_push(
+                key="error_counts",
+                value="; ".join([f"{k}: {v}" for k, v in report.counts.items()]),
+            )
             return 1
         else:
             kwargs["ti"].xcom_push(key="ivt_path", value=inspect.getfile(upload.__class__))
@@ -199,7 +203,7 @@ with HMDAG(
         executor_config={
             "SlurmExecutor": {"output": "/home/codcc/airflow-logs/slurm/%x_%N_%j.out",
                               "nodelist": get_local_vm(
-                                  os.environ["AIRFLOW_CONN_INGEST_API_CONNECTION"]),
+                                  os.environ["AIRFLOW_CONN_AIRFLOW_CONNECTION"]),
                               "mem": "2G"}},
     )
 
