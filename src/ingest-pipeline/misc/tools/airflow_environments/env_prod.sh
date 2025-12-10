@@ -1,6 +1,6 @@
 #set airflow environment
-HM_AF_CONFIG=/opt/repositories/vm06-prod/ingest-pipeline/src/ingest-pipeline/airflow/airflow.cfg
-HM_AF_HOME=/opt/repositories/vm06-prod/ingest-pipeline/src/ingest-pipeline/airflow
+HM_AF_CONFIG=/opt/repositories/vm08-prod/ingest-pipeline/src/ingest-pipeline/airflow/airflow.cfg
+HM_AF_HOME=/opt/repositories/vm08-prod/ingest-pipeline/src/ingest-pipeline/airflow
 
 HM_AF_METHOD='conda'
 HM_AF_ENV_NAME="condaEnv_python_${HUBMAP_PYTHON_VERSION}_prod"
