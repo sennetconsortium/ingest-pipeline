@@ -199,7 +199,7 @@ with HMDAG(
         executor_config={
             "SlurmExecutor": {"output": "/home/codcc/airflow-logs/slurm/%x_%N_%j.out",
                               "nodelist": get_local_vm(
-                                  os.environ["AIRFLOW_CONN_INGEST_API_CONNECTION"]),
+                                  os.environ["AIRFLOW_CONN_AIRFLOW_CONNECTION"]),
                               "mem": "2G"}},
     )
 

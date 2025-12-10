@@ -57,7 +57,7 @@ default_args = {
     "xcom_push": True,
     "queue": get_queue_resource("multiassay_component_metadata"),
     "executor_config": {"SlurmExecutor": {"output": "/home/codcc/airflow-logs/slurm/%x_%N_%j.out",
-                                          "nodelist": get_local_vm(os.environ["AIRFLOW_CONN_INGEST_API_CONNECTION"]),
+                                          "nodelist": get_local_vm(os.environ["AIRFLOW_CONN_AIRFLOW_CONNECTION"]),
                                           "mem": "2G"}},
     "on_failure_callback": create_dataset_state_error_callback(get_uuid_for_error),
 }
