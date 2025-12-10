@@ -56,7 +56,7 @@ default_args = {
     "retry_delay": timedelta(minutes=1),
     "xcom_push": True,
     "executor_config": {"SlurmExecutor": {"output": "/home/codcc/airflow-logs/slurm/%x_%N_%j.out",
-                                          "nodelist": get_local_vm(os.environ["AIRFLOW_CONN_INGEST_API_CONNECTION"]),
+                                          "nodelist": get_local_vm(os.environ["AIRFLOW_CONN_AIRFLOW_CONNECTION"]),
                                           "mem": "2G"}},
     "queue": get_queue_resource("reorganize_upload"),
 }
