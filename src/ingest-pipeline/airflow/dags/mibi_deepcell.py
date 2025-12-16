@@ -64,7 +64,7 @@ with HMDAG(
 ) as dag:
     pipeline_name = "mibi-pipeline"
     workflow_version = "1.0.0"
-    workflow_description = ""
+    workflow_description = "The MIBI pipeline performs segments nuclei and cells using Cytokit, and performs spatial analysis of expression data using SPRM, which computes various measures of analyte intensity per cell, performs clustering based on expression and other data, and computes markers for each cluster."
 
     cwl_workflows = [
         {

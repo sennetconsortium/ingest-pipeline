@@ -64,11 +64,13 @@ with HMDAG(
 ) as dag:
     pipeline_name = "celldive-pipeline"
     workflow_version = "1.0.0"
-    workflow_description = ""
+    workflow_description = "The CellDive pipeline performs segments nuclei and cells using Cytokit, and performs spatial analysis of expression data using SPRM, which computes various measures of analyte intensity per cell, performs clustering based on expression and other data, and computes markers for each cluster."
 
     cwl_workflows = [
         {
-            "workflow_path": str(get_absolute_workflow(Path(pipeline_name, "pipeline.cwl"))),
+            "workflow_path": str(
+                get_absolute_workflow(Path("phenocycler-pipeline", "pipeline.cwl"))
+            ),
             "documentation_url": "",
         },
         {
@@ -130,9 +132,9 @@ with HMDAG(
 
         input_parameters = [
             {"parameter_name": "--gpus", "value": "all"},
-            {"parameter_name": "--meta_path", "value": meta_yml_path},
             {"parameter_name": "--segmentation_method", "value": "deepcell"},
             {"parameter_name": "--data_dir", "value": str(data_dir)},
+            {"parameter_name": "--invert_geojson_mask", "value": ""},
         ]
 
         command = get_cwl_cmd_from_workflows(

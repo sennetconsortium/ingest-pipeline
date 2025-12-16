@@ -52,10 +52,10 @@ ENV_SCRIPT="/airflow_environments/env_${HUBMAP_INSTANCE}.sh"
 # those from the config files (prefix HM_AF_).  We also check that all
 # required variables are set at some level.
 envvars=( CONFIG HOME \
+    CONN_AIRFLOW_CONNECTION \
 	  CONN_INGEST_API_CONNECTION \
 	  CONN_UUID_API_CONNECTION \
 	  CONN_FILES_API_CONNECTION \
-	  CONN_SPATIAL_API_CONNECTION \
 	  CONN_CELLS_API_CONNECTION \
 	  CONN_SEARCH_API_CONNECTION \
 	  CONN_ENTITY_API_CONNECTION \

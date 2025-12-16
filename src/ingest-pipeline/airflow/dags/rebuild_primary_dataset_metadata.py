@@ -2,6 +2,7 @@ import os
 import yaml
 import utils
 from pprint import pprint
+import time
 
 from airflow.operators.bash import BashOperator
 from airflow.operators.python import PythonOperator
@@ -57,7 +58,7 @@ default_args = {
     "xcom_push": True,
     "queue": get_queue_resource("rebuild_metadata"),
     "executor_config": {"SlurmExecutor": {"output": "/home/codcc/airflow-logs/slurm/%x_%N_%j.out",
-                                          "nodelist": get_local_vm(os.environ["AIRFLOW_CONN_INGEST_API_CONNECTION"]),
+                                          "nodelist": get_local_vm(os.environ["AIRFLOW_CONN_AIRFLOW_CONNECTION"]),
                                           "mem": "2G"}},
     "on_failure_callback": create_dataset_state_error_callback(get_uuid_for_error),
 }
@@ -104,9 +105,7 @@ with HMDAG(
         pprint(kwargs["dag_run"].conf)
 
         try:
-            assert_json_matches_schema(
-                kwargs["dag_run"].conf, "launch_checksums_metadata_schema.yml"
-            )
+            assert_json_matches_schema(kwargs["dag_run"].conf, "rebuild_metadata_schema.yml")
         except AssertionError as e:
             print("invalid metadata follows:")
             pprint(kwargs["dag_run"].conf)
@@ -202,6 +201,7 @@ with HMDAG(
             kwargs["ti"].xcom_push(key="assay_type", value=assay_type)
         else:
             kwargs["ti"].xcom_push(key="collectiontype", value=None)
+        time.sleep(240)
 
     t_send_status = PythonOperator(
         task_id="send_status_msg",
