@@ -15,7 +15,7 @@ ENDPOINTS = {
     "PROD": {
         "entity_url": "https://entity.api.sennetconsortium.org",
         "search_url": "https://search.api.sennetconsortium.org",
-        "ingest_url": "https://ingest.api.sennetconsortium.org",
+        "ingest_url": "http://vm06.moonshot.pitt.edu:7777",
         "assay_info_url": "https://search.api.sennetconsortium.org",
     },
     "STAGE": {
