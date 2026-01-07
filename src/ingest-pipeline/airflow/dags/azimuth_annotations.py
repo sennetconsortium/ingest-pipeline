@@ -231,7 +231,13 @@ with HMDAG(
         provide_context=True,
     )
 
-    t_populate_tmpdir = MoveDataOperator(task_id="populate_tmpdir")
+    t_populate_tmpdir = MoveDataOperator(task_id="populate_tmpdir",
+                                         executor_config={"SlurmExecutor": {
+                                             "output": "/home/codcc/airflow-logs/slurm/%x_%N_%j.out",
+                                             "nodelist": get_local_vm(
+                                                 os.environ["AIRFLOW_CONN_AIRFLOW_CONNECTION"]),
+                                             "mem": "2G"}},
+                                         )
 
     t_pipeline_exec_azimuth_annotate = BashOperator(
         task_id="pipeline_exec_azimuth_annotate",
