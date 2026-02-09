@@ -89,9 +89,18 @@ with HMDAG(
             print(f"parsed dt: {dt}")
 
         if not previous_version_uuid and not avoid_previous_version:
-            previous_status, previous_uuid = check_link_published_drvs(
-                uuid, get_auth_tok(**kwargs)
-            )
+            if (
+                ds_rslt["creation_action"] == "Central Process"
+                and ds_rslt["status"] == "Published"
+            ):
+                previous_status, previous_uuid = check_link_published_drvs(
+                    ds_rslt["direct_ancestor"][0].get("uuid"), get_auth_tok(**kwargs)
+                )
+            else:
+                previous_status, previous_uuid = check_link_published_drvs(
+                    uuid, get_auth_tok(**kwargs)
+                )
+
             if previous_status:
                 previous_version_uuid = previous_uuid
 
