@@ -1,16 +1,19 @@
 import logging
 from typing import Optional
 
+from status_change.slack.new import SlackDatasetNew, SlackDatasetNewDerived
+
 from .slack.base import SlackMessage
-from .slack.error import (  # SlackDatasetErrorDerived,; SlackDatasetErrorPrimary,
+from .slack.error import (
     SlackDatasetError,
+    SlackDatasetErrorProcessing,
     SlackUploadError,
 )
-from .slack.invalid import (  # SlackDatasetInvalidDerived,
+from .slack.invalid import (
     SlackDatasetInvalid,
     SlackUploadInvalid,
 )
-from .slack.qa import SlackDatasetQA
+from .slack.qa import SlackDatasetQA, SlackDatasetQADerived
 from .slack.reorganized import (
     SlackUploadReorganized,
     SlackUploadReorganizedNoDatasets,
@@ -18,15 +21,15 @@ from .slack.reorganized import (
 )
 from .status_utils import (
     EntityUpdateException,
+    MessageManager,
     Statuses,
     get_env,
-    get_submission_context,
-    post_to_slack_notify,
     slack_channels_testing,
+    split_error_counts,
 )
 
 
-class SlackManager:
+class SlackManager(MessageManager):
     """
     Allows StatusChanger to remain agnostic about Slack requirements for different statuses
     and the nuances of their (potential) subclasses; manager handles traffic direction.
@@ -38,44 +41,42 @@ class SlackManager:
 
     def __init__(
         self,
-        status: Statuses,
-        uuid: str,
-        token: str,
-        msg: Optional[str] = None,
+        status,
+        uuid,
+        token,
+        messages=None,
         *args,
         **kwargs,
     ):
-        del args, kwargs
-        self.uuid = uuid
-        self.token = token
-        self.msg = msg
-        self.message_class = self.get_message_class(status)
+        super().__init__(status, uuid, token, messages, *args, **kwargs)
+        self.message_class = self.get_message_class(self.status)
         if not self.message_class:
             logging.info(
-                f"Status {status.value} does not have any Slack messaging rules; no message will be sent."
+                f"Status {self.status.value} does not have any Slack messaging rules; no message will be sent."
             )
-        self.is_valid_for_status = bool(self.message_class)
 
-        """
-        This is the source of truth for what classes should be used for a given status.
-        Format:
-            Statuses.STATUS: {"main_class": <class_name>, "subclasses": [<class_name>]}
-        """
-
+    """
+    This is the source of truth for what classes should be used for a given status.
+    Format:
+        Statuses.STATUS: {"main_class": <class_name>, "subclasses": [<class_name>]}
+    """
     status_to_class = {
         Statuses.DATASET_ERROR: {
             "main_class": SlackDatasetError,
             "subclasses": [],
-            # "subclasses": [SlackDatasetErrorPrimary, SlackDatasetErrorDerived],
+            "subclasses": [SlackDatasetErrorProcessing],
         },
         Statuses.DATASET_INVALID: {
             "main_class": SlackDatasetInvalid,
             "subclasses": [],
-            # "subclasses": [SlackDatasetInvalidDerived],
+        },
+        Statuses.DATASET_NEW: {
+            "main_class": SlackDatasetNew,
+            "subclasses": [SlackDatasetNewDerived],
         },
         Statuses.DATASET_QA: {
             "main_class": SlackDatasetQA,
-            "subclasses": [],
+            "subclasses": [SlackDatasetQADerived],
         },
         Statuses.UPLOAD_ERROR: {
             "main_class": SlackUploadError,
@@ -91,35 +92,57 @@ class SlackManager:
         },
     }
 
+    @property
+    def is_valid_for_status(self):
+        return bool(self.message_class)
+
     def get_message_class(self, msg_type: Statuses) -> Optional[SlackMessage]:
-        relevant_classes = self.status_to_class.get(msg_type)
-        if not relevant_classes:
+        if not (relevant_classes := self.status_to_class.get(msg_type)):
             return
-        # Re-request entity data as previous message managers may have altered it
-        entity_data = get_submission_context(self.token, self.uuid)
+        class_args = [self.uuid, self.token]
+        class_kwargs = {"run_id": self.run_id, "processing_pipeline": self.processing_pipeline}
+        test_kwargs = {
+            "processing_pipeline": self.processing_pipeline,
+        }
         for subclass in relevant_classes.get("subclasses", []):
-            if subclass.test(entity_data, self.token):
-                return subclass(self.uuid, self.token)
+            if subclass.test(self.entity_data, **test_kwargs):
+                return subclass(*class_args, **class_kwargs)
         if main_class := relevant_classes["main_class"]:
-            return main_class(self.uuid, self.token)
+            return main_class(*class_args, **class_kwargs)
 
     def update(self):
+        from utils import post_to_slack_notify
+
         if not self.message_class:
-            return
+            raise EntityUpdateException("Can't update Slack without message class, exiting.")
+        message = self.get_message()
+        channel = self.get_channel()
+        logging.info(f"Sending message from {self.message_class.name}...")
+        logging.info(f"Channel: {channel}")
+        logging.info(f"Message: {message}")
+        try:
+            post_to_slack_notify(self.token, message, channel)
+        except Exception as e:
+            raise EntityUpdateException(f"No Slack message sent. Encountered error: {e}")
+
+    def get_message(self) -> str:
+        if not self.message_class:
+            raise EntityUpdateException("Can't format message without message class.")
         try:
             message = self.message_class.format()
-            if self.msg:
-                message = f"""
-                {message}
-
-                Message:
-                {self.msg}
-                """
+            if self.error_counts:
+                message.extend(["", "Error Counts:", *split_error_counts(self.error_counts)])
         except NotImplementedError:
-            logging.info(
+            raise EntityUpdateException(
                 f"Message class {self.message_class.name} does not implement a format method; not sending Slack message."
             )
-            return
+        if not message:
+            raise EntityUpdateException(f"Request to send Slack message missing message text.")
+        return "\n".join([line for line in message])
+
+    def get_channel(self) -> str:
+        if not self.message_class:
+            raise EntityUpdateException("Can't retrieve channel without message class.")
         try:
             env = get_env()
         except Exception as e:
@@ -132,17 +155,11 @@ class SlackManager:
             logging.info(
                 f"Non-prod environment, switching channel from {self.message_class.channel} to {channel}."
             )
+            if not channel:
+                channel = slack_channels_testing.get("base", "")
         if not channel:
             channel = SlackMessage.get_channel()
             logging.info(
                 f"No channel found for message class {self.message_class.name} on {env}, using default channel."
             )
-        logging.info(f"Sending message from {self.message_class.name}...")
-        logging.info(f"Channel: {channel}")
-        logging.info(f"Message: {message}")
-        if not message:
-            raise EntityUpdateException(f"Request to send Slack message missing message text.")
-        try:
-            post_to_slack_notify(self.token, message, channel)
-        except Exception as e:
-            raise EntityUpdateException(f"No Slack message sent. Encountered error: {e}")
+        return channel

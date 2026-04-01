@@ -746,6 +746,7 @@ class EntityFactory:
         group_uuid,
         description,
         is_epic,
+        lab_id,
         priority_project_list=[],
         reindex=True,
     ):
@@ -762,13 +763,15 @@ class EntityFactory:
             "direct_ancestor_uuids": direct_ancestor_uuids,
             "group_uuid": group_uuid,
             "description": description,
+            "lab_dataset_id": lab_id,
             "priority_project_list": priority_project_list,
         }
         if is_epic:
             data.update({"creation_action": "External Process"})
         print(f"Creating dataset with data {data}")
+        reindex_param = "reindex-priority=3" if reindex else ""
         r = requests.post(
-            f"{ingest_url}/datasets?reindex={reindex}",
+            f"{ingest_url}/datasets?{reindex_param}",
             data=json.dumps(data),
             headers={
                 "Authorization": f"Bearer {self.auth_tok}",
@@ -786,8 +789,9 @@ class EntityFactory:
         """
         ingest_url = ENDPOINTS[self.instance]["ingest_url"]
         data = {"contains_human_genetic_sequences": contains_human_genetic_sequences}
+        reindex_param = "reindex-priority=3" if reindex else ""
         r = requests.put(
-            f"{ingest_url}/datasets/{uuid}/submit?reindex={reindex}",
+            f"{ingest_url}/datasets/{uuid}/submit?{reindex_param}",
             data=json.dumps(data),
             headers={
                 "Authorization": f"Bearer {self.auth_tok}",

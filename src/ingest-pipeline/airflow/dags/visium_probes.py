@@ -416,6 +416,7 @@ with HMDAG(
             "dataset_uuid_callable": get_dataset_uuid,
             "ds_state": "Error",
             "message": f"An error occurred in visium pipeline",
+            "pipeline_name": "visium"
         },
         executor_config={"SlurmExecutor": {
             "output": "/home/codcc/airflow-logs/slurm/%x_%N_%j.out",
