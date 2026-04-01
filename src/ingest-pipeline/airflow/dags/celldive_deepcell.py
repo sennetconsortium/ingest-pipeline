@@ -1,4 +1,4 @@
-import urllib.parse
+import os
 
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -6,6 +6,8 @@ from pathlib import Path
 from airflow.operators.bash import BashOperator
 from airflow.decorators import task
 from airflow.operators.python import BranchPythonOperator, PythonOperator
+from status_change.callbacks.failure_callback import FailureCallback
+
 
 import utils
 from utils import (
@@ -21,12 +23,8 @@ from utils import (
     get_queue_resource,
     get_preserve_scratch_resource,
     get_cwl_cmd_from_workflows,
-    get_submission_context,
-    get_auth_tok,
-    get_parent_dataset_uuid,
-    post_to_slack_notify,
-    env_appropriate_slack_channel,
     get_threads_resource,
+    get_local_vm,
 )
 
 from hubmap_operators.common_operators import (
@@ -50,10 +48,10 @@ default_args = {
     "retries": 1,
     "retry_delay": timedelta(minutes=1),
     "xcom_push": True,
-    "queue": get_queue_resource("celldive_deepcell"),
+    "queue": get_queue_resource("celldive_deepcell_segmentation"),
     "executor_config": {"SlurmExecutor": {"output": "/home/codcc/airflow-logs/slurm/%x_%N_%j.out",
-                                          "cpus-per-task": str(get_threads_resource("celldive_deepcell"))}},
-    "on_failure_callback": utils.create_dataset_state_error_callback(get_uuid_for_error),
+                                          "cpus-per-task": str(get_threads_resource("celldive_deepcell_segmentation")),}},
+    "on_failure_callback": FailureCallback(__name__, get_uuid_for_error),
 }
 
 with HMDAG(
@@ -63,7 +61,7 @@ with HMDAG(
     default_args=default_args,
     user_defined_macros={
         "tmp_dir_path": get_tmp_dir_path,
-        "preserve_scratch": get_preserve_scratch_resource("celldive_deepcell"),
+        "preserve_scratch": get_preserve_scratch_resource("celldive_deepcell_segmentation"),
     },
 ) as dag:
     pipeline_name = "celldive-pipeline"
@@ -174,90 +172,6 @@ with HMDAG(
         },
     )
 
-
-    @task(task_id="prepare_stellar_pre_convert")
-    def prepare_cwl_stellar_pre_convert(**kwargs):
-        if kwargs["dag_run"].conf.get("dryrun"):
-            cwl_path = Path(cwl_workflows[1]["workflow_path"]).parent
-            return build_tag_containers(cwl_path)
-        else:
-            return "No Container build required"
-
-    prepare_stellar_pre_convert = prepare_cwl_stellar_pre_convert()
-
-    def build_cwltool_cwl_stellar_pre_convert(**kwargs):
-        run_id = kwargs["run_id"]
-        tmpdir = get_tmp_dir_path(run_id)
-        print("tmpdir: ", tmpdir)
-
-        workflows = kwargs["ti"].xcom_pull(key="cwl_workflows", task_ids="build_cwl_segmentation")
-
-        input_parameters = [
-            {"parameter_name": "--directory", "value": str(tmpdir / "cwl_out")},
-        ]
-        command = get_cwl_cmd_from_workflows(workflows, 1, input_parameters, tmpdir, kwargs["ti"])
-
-        return join_quote_command_str(command)
-
-    t_build_cwl_stellar_pre_convert = PythonOperator(
-        task_id="build_cwl_stellar_pre_convert",
-        python_callable=build_cwltool_cwl_stellar_pre_convert,
-        provide_context=True,
-    )
-
-    t_pipeline_exec_cwl_stellar_pre_convert = BashOperator(
-        task_id="pipeline_exec_cwl_stellar_pre_convert",
-        bash_command=""" \
-            tmp_dir={{tmp_dir_path(run_id)}} ; \
-            {{ti.xcom_pull(task_ids='build_cwl_stellar_pre_convert')}} >> $tmp_dir/session.log 2>&1 ; \
-            echo $?
-            """,
-    )
-
-    t_maybe_keep_cwl_stellar_pre_convert = BranchPythonOperator(
-        task_id="maybe_keep_cwl_stellar_pre_convert",
-        python_callable=utils.pythonop_maybe_keep,
-        provide_context=True,
-        op_kwargs={
-            "next_op": "copy_stellar_pre_convert_data",
-            "bail_op": "set_dataset_error",
-            "test_op": "pipeline_exec_cwl_stellar_pre_convert",
-        },
-    )
-
-    #  output is a single file cell_data.h5ad
-    #  copy this output to some hardcoded directory
-    t_copy_stellar_pre_convert_data = BashOperator(
-        task_id="copy_stellar_pre_convert_data",
-        bash_command=""" \
-            mkdir /hive/hubmap/data/projects/STELLAR_pre_convert/{{ dag_run.conf.parent_submission_id | replace("[", "") | replace("]", "") }}/
-            tmp_dir={{tmp_dir_path(run_id)}} ; \
-            find ${tmp_dir} -name "cell_data.h5ad" -exec cp -v {} /hive/hubmap/data/projects/STELLAR_pre_convert/{{ dag_run.conf.parent_submission_id | replace("[", "") | replace("]", "") }} \; ; \
-            echo $?
-            """,
-    )
-
-    @task
-    def notify_user_stellar_pre_convert(**kwargs):
-        run_id = kwargs["run_id"]
-        conf = airflow_conf.as_dict().get("webserver", {})
-        # ensure base_url uses https
-        base_url = (
-            urllib.parse.urlparse(str(conf.get("base_url", "")))._replace(scheme="https").geturl()
-        )
-        run_url = f"{base_url}:{conf.get('web_server_port', '')}/dags/phenocycler_deepcell_segmentation/grid?dag_run_id={urllib.parse.quote(run_id)}"
-        primary_id = get_submission_context(
-            get_auth_tok(**kwargs), get_parent_dataset_uuid(**kwargs)
-        ).get("hubmap_id")
-        message = f"CellDIVE segmentation step succeeded in run <{run_url}|{run_id}>. Primary dataset ID: {primary_id}."
-        if kwargs["dag_run"].conf.get("dryrun"):
-            message = "[dryrun] " + message
-        post_to_slack_notify(
-            get_auth_tok(**kwargs), message, env_appropriate_slack_channel(SLACK_NOTIFY_CHANNEL)
-        )
-
-    t_notify_user_stellar_pre_convert = notify_user_stellar_pre_convert()
-
     t_set_dataset_error = PythonOperator(
         task_id="set_dataset_error",
         python_callable=utils.pythonop_set_dataset_state,
@@ -269,6 +183,10 @@ with HMDAG(
             "message": "An error occurred in {}".format(pipeline_name),
             "pipeline_name": pipeline_name
         },
+        executor_config={"SlurmExecutor": {
+            "output": "/home/codcc/airflow-logs/slurm/%x_%N_%j.out",
+            "nodelist": get_local_vm(os.environ["AIRFLOW_CONN_AIRFLOW_CONNECTION"]),
+            "mem": "2G"}},
     )
 
     t_log_info = LogInfoOperator(task_id="log_info")
@@ -294,12 +212,16 @@ with HMDAG(
         for next_dag in downstream_workflow_iter(collection_type, assay_type):
             yield next_dag, payload
 
-    t_trigger_phenocyler = FlexMultiDagRunOperator(
+    t_trigger_sprm = FlexMultiDagRunOperator(
         task_id="trigger_sprm",
         dag=dag,
         trigger_dag_id="celldive_segmentation",
         python_callable=trigger_sprm,
         op_kwargs={"collection_type": "celldive_sprm", "assay_type": "celldive"},
+        executor_config={"SlurmExecutor": {
+            "output": "/home/codcc/airflow-logs/slurm/%x_%N_%j.out",
+            "nodelist": get_local_vm(os.environ["AIRFLOW_CONN_AIRFLOW_CONNECTION"]),
+            "mem": "2G"}},
     )
 
     (
@@ -310,7 +232,7 @@ with HMDAG(
         >> t_build_cwl_segmentation
         >> t_pipeline_exec_cwl_segmentation
         >> t_maybe_keep_cwl_segmentation
-        >> t_trigger_phenocyler
+        >> t_trigger_sprm
 
     )
     t_maybe_keep_cwl_segmentation >> t_set_dataset_error

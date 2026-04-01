@@ -1,9 +1,12 @@
+import os
 import utils
 
 from airflow import DAG
 from airflow.operators.bash import BashOperator
 from airflow.operators.empty import EmptyOperator
 from airflow.operators.python import PythonOperator, BranchPythonOperator
+from status_change.callbacks.failure_callback import FailureCallback
+
 
 from datetime import datetime, timedelta
 from typing import List
@@ -45,7 +48,9 @@ def generate_phenocycler_dag(params: SequencingDagParameters) -> DAG:
         "retry_delay": timedelta(minutes=1),
         "xcom_push": True,
         "queue": get_queue_resource(params.dag_id),
-        "on_failure_callback": utils.create_dataset_state_error_callback(get_uuid_for_error),
+        "executor_config": {"SlurmExecutor": {"output": "/home/codcc/airflow-logs/slurm/%x_%N_%j.out",
+                                              "cpus-per-task": str(get_threads_resource(params.dag_id)),}},
+        "on_failure_callback": FailureCallback(__name__, get_uuid_for_error),
     }
 
     with HMDAG(
@@ -378,6 +383,10 @@ def generate_phenocycler_dag(params: SequencingDagParameters) -> DAG:
                 "next_op": "send_create_dataset",
                 "bail_op": "join",
             },
+            executor_config={"SlurmExecutor": {
+                "output": "/home/codcc/airflow-logs/slurm/%x_%N_%j.out",
+                "nodelist": get_local_vm(os.environ["AIRFLOW_CONN_AIRFLOW_CONNECTION"]),
+                "mem": "2G"}},
         )
 
         t_send_create_dataset = PythonOperator(
@@ -391,6 +400,10 @@ def generate_phenocycler_dag(params: SequencingDagParameters) -> DAG:
                 "dataset_name_callable": build_dataset_name,
                 "pipeline_shorthand": "DeepCell + SPRM",
             },
+            executor_config={"SlurmExecutor": {
+                "output": "/home/codcc/airflow-logs/slurm/%x_%N_%j.out",
+                "nodelist": get_local_vm(os.environ["AIRFLOW_CONN_AIRFLOW_CONNECTION"]),
+                "mem": "2G"}},
         )
 
         t_expand_symlinks = BashOperator(
@@ -403,6 +416,10 @@ def generate_phenocycler_dag(params: SequencingDagParameters) -> DAG:
                 tar -xf symlinks.tar ; \
                 echo $?
                 """,
+            executor_config={"SlurmExecutor": {
+                "output": "/home/codcc/airflow-logs/slurm/%x_%N_%j.out",
+                "nodelist": get_local_vm(os.environ["AIRFLOW_CONN_AIRFLOW_CONNECTION"]),
+                "mem": "2G"}},
         )
 
         send_status_msg = make_send_status_msg_function(
@@ -424,7 +441,13 @@ def generate_phenocycler_dag(params: SequencingDagParameters) -> DAG:
         )
 
         t_send_status = PythonOperator(
-            task_id="send_status_msg", python_callable=send_status_msg, provide_context=True
+            task_id="send_status_msg",
+            python_callable=send_status_msg,
+            provide_context=True,
+            executor_config={"SlurmExecutor": {
+                "output": "/home/codcc/airflow-logs/slurm/%x_%N_%j.out",
+                "nodelist": get_local_vm(os.environ["AIRFLOW_CONN_AIRFLOW_CONNECTION"]),
+                "mem": "2G"}},
         )
 
         t_set_dataset_error = PythonOperator(
@@ -438,13 +461,42 @@ def generate_phenocycler_dag(params: SequencingDagParameters) -> DAG:
                 "message": "An error occurred in {}".format(params.pipeline_name),
                 "pipeline_name": params.pipeline_name
             },
+            executor_config={"SlurmExecutor": {
+                "output": "/home/codcc/airflow-logs/slurm/%x_%N_%j.out",
+                "nodelist": get_local_vm(os.environ["AIRFLOW_CONN_AIRFLOW_CONNECTION"]),
+                "mem": "2G"}},
         )
 
-        t_log_info = LogInfoOperator(task_id="log_info")
+        t_log_info = LogInfoOperator(task_id="log_info",
+                                     executor_config={"SlurmExecutor": {
+                                         "output": "/home/codcc/airflow-logs/slurm/%x_%N_%j.out",
+                                         "nodelist": get_local_vm(
+                                             os.environ["AIRFLOW_CONN_AIRFLOW_CONNECTION"]),
+                                         "mem": "2G"}},
+                                     )
 
-        t_move_data = MoveDataOperator(task_id="move_downstream_data")
-        t_join = JoinOperator(task_id="join", trigger_rule="one_success")
-        t_cleanup_tmpdir = CleanupTmpDirOperator(task_id="cleanup_downstream_tmpdir")
+        t_move_data = MoveDataOperator(task_id="move_downstream_data",
+                                       executor_config={"SlurmExecutor": {
+                                           "output": "/home/codcc/airflow-logs/slurm/%x_%N_%j.out",
+                                           "nodelist": get_local_vm(
+                                               os.environ["AIRFLOW_CONN_AIRFLOW_CONNECTION"]),
+                                           "mem": "2G"}},
+                                       )
+        t_join = JoinOperator(task_id="join",
+                              trigger_rule="one_success",
+                              executor_config={"SlurmExecutor": {
+                                  "output": "/home/codcc/airflow-logs/slurm/%x_%N_%j.out",
+                                  "nodelist": get_local_vm(
+                                      os.environ["AIRFLOW_CONN_AIRFLOW_CONNECTION"]),
+                                  "mem": "2G"}},
+                              )
+        t_cleanup_tmpdir = CleanupTmpDirOperator(task_id="cleanup_downstream_tmpdir",
+                                                 executor_config={"SlurmExecutor": {
+                                                     "output": "/home/codcc/airflow-logs/slurm/%x_%N_%j.out",
+                                                     "nodelist": get_local_vm(os.environ[
+                                                                                  "AIRFLOW_CONN_AIRFLOW_CONNECTION"]),
+                                                     "mem": "2G"}},
+                                                 )
 
         (
             t_log_info

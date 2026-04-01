@@ -1,3 +1,4 @@
+import os
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -5,6 +6,8 @@ from airflow.operators.bash import BashOperator
 from airflow.operators.empty import EmptyOperator
 from airflow.decorators import task
 from airflow.operators.python import BranchPythonOperator, PythonOperator
+from status_change.callbacks.failure_callback import FailureCallback
+
 
 import utils
 from utils import (
@@ -22,11 +25,11 @@ from utils import (
     get_preserve_scratch_resource,
     get_threads_resource,
     get_cwl_cmd_from_workflows,
+    get_local_vm,
 )
 
 from hubmap_operators.common_operators import (
     CleanupTmpDirOperator,
-    CreateTmpDirOperator,
     JoinOperator,
     LogInfoOperator,
     MoveDataOperator,
@@ -45,8 +48,10 @@ default_args = {
     "retries": 1,
     "retry_delay": timedelta(minutes=1),
     "xcom_push": True,
-    "queue": get_queue_resource("celldive_deepcell"),
-    "on_failure_callback": utils.create_dataset_state_error_callback(get_uuid_for_error),
+    "queue": get_queue_resource("celldive_sprm"),
+    "executor_config": {"SlurmExecutor": {"output": "/home/codcc/airflow-logs/slurm/%x_%N_%j.out",
+                                          "cpus-per-task": str(get_threads_resource("celldive_sprm")),}},
+    "on_failure_callback": FailureCallback(__name__, get_uuid_for_error),
 }
 
 with HMDAG(
@@ -374,6 +379,10 @@ with HMDAG(
             "next_op": "send_create_dataset",
             "bail_op": "join",
         },
+        executor_config={"SlurmExecutor": {
+            "output": "/home/codcc/airflow-logs/slurm/%x_%N_%j.out",
+            "nodelist": get_local_vm(os.environ["AIRFLOW_CONN_AIRFLOW_CONNECTION"]),
+            "mem": "2G"}},
     )
 
     t_send_create_dataset = PythonOperator(
@@ -387,6 +396,10 @@ with HMDAG(
             "dataset_name_callable": build_dataset_name,
             "pipeline_shorthand": "DeepCell + SPRM",
         },
+        executor_config={"SlurmExecutor": {
+            "output": "/home/codcc/airflow-logs/slurm/%x_%N_%j.out",
+            "nodelist": get_local_vm(os.environ["AIRFLOW_CONN_AIRFLOW_CONNECTION"]),
+            "mem": "2G"}},
     )
 
     t_set_dataset_error = PythonOperator(
@@ -399,6 +412,10 @@ with HMDAG(
             "ds_state": "Error",
             "message": "An error occurred in {}".format(pipeline_name),
         },
+        executor_config={"SlurmExecutor": {
+            "output": "/home/codcc/airflow-logs/slurm/%x_%N_%j.out",
+            "nodelist": get_local_vm(os.environ["AIRFLOW_CONN_AIRFLOW_CONNECTION"]),
+            "mem": "2G"}},
     )
 
     t_expand_symlinks = BashOperator(
@@ -411,6 +428,10 @@ with HMDAG(
         tar -xf symlinks.tar ; \
         echo $?
         """,
+        executor_config={"SlurmExecutor": {
+            "output": "/home/codcc/airflow-logs/slurm/%x_%N_%j.out",
+            "nodelist": get_local_vm(os.environ["AIRFLOW_CONN_AIRFLOW_CONNECTION"]),
+            "mem": "2G"}},
     )
 
     send_status_msg = make_send_status_msg_function(
@@ -432,13 +453,43 @@ with HMDAG(
     )
 
     t_send_status = PythonOperator(
-        task_id="send_status_msg", python_callable=send_status_msg, provide_context=True
+        task_id="send_status_msg",
+        python_callable=send_status_msg,
+        provide_context=True,
+        executor_config={"SlurmExecutor": {
+            "output": "/home/codcc/airflow-logs/slurm/%x_%N_%j.out",
+            "nodelist": get_local_vm(os.environ["AIRFLOW_CONN_AIRFLOW_CONNECTION"]),
+            "mem": "2G"}},
     )
 
-    t_log_info = LogInfoOperator(task_id="log_info")
-    t_join = JoinOperator(task_id="join")
-    t_cleanup_tmpdir = CleanupTmpDirOperator(task_id="cleanup_tmpdir")
-    t_move_data = MoveDataOperator(task_id="move_data")
+    t_log_info = LogInfoOperator(task_id="log_info",
+                                 executor_config={"SlurmExecutor": {
+                                     "output": "/home/codcc/airflow-logs/slurm/%x_%N_%j.out",
+                                     "nodelist": get_local_vm(
+                                         os.environ["AIRFLOW_CONN_AIRFLOW_CONNECTION"]),
+                                     "mem": "2G"}},
+                                 )
+    t_join = JoinOperator(task_id="join",
+                          executor_config={"SlurmExecutor": {
+                              "output": "/home/codcc/airflow-logs/slurm/%x_%N_%j.out",
+                              "nodelist": get_local_vm(
+                                  os.environ["AIRFLOW_CONN_AIRFLOW_CONNECTION"]),
+                              "mem": "2G"}},
+                          )
+    t_cleanup_tmpdir = CleanupTmpDirOperator(task_id="cleanup_tmpdir",
+                                             executor_config={"SlurmExecutor": {
+                                                 "output": "/home/codcc/airflow-logs/slurm/%x_%N_%j.out",
+                                                 "nodelist": get_local_vm(
+                                                     os.environ["AIRFLOW_CONN_AIRFLOW_CONNECTION"]),
+                                                 "mem": "2G"}},
+                                             )
+    t_move_data = MoveDataOperator(task_id="move_data",
+                                   executor_config={"SlurmExecutor": {
+                                       "output": "/home/codcc/airflow-logs/slurm/%x_%N_%j.out",
+                                       "nodelist": get_local_vm(
+                                           os.environ["AIRFLOW_CONN_AIRFLOW_CONNECTION"]),
+                                       "mem": "2G"}},
+                                   )
 
     (
         t_log_info
