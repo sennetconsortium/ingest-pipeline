@@ -338,7 +338,6 @@ message_class_map = {
     "DataIngestBoardManager": DataIngestBoardManager,
     "SlackManager": SlackManager,
     "EmailManager": EmailManager,
-    "StatisticsManager": StatisticsManager,
 }
 
 
