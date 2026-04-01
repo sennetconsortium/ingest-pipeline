@@ -48,6 +48,16 @@ resource_map:
       - 'task_re': '.*'
         'queue': 'APPS'
         'threads': 6
+  - 'dag_re': 'celldive_sprm'
+    'preserve_scratch': true
+    'lanes': 1
+    'tasks':
+      - 'task_re': '(.*(?:cwl))(?!(?:segmentation)).*|.*cmd.*'
+        'queue': 'COMPUTE'
+        'threads': 6
+      - 'task_re': '.*'
+        'queue': 'APPS'
+        'threads': 6
   - 'dag_re': 'phenocycler_deepcell_segmentation'
     'preserve_scratch': true
     'lanes': 1
