@@ -38,7 +38,6 @@ from utils import (
     get_preserve_scratch_resource,
     get_soft_data_assaytype,
     get_local_vm,
-    search_api_reindex,
 )
 
 from misc.tools.split_and_create import reorganize

@@ -34,7 +34,6 @@ from utils import (
     get_local_vm,
     encrypt_tok,
     make_send_status_msg_function,
-    search_api_reindex,
 )
 
 from extra_utils import get_components

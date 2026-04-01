@@ -31,6 +31,7 @@ from utils import (
     post_to_slack_notify,
     pythonop_maybe_keep,
     pythonop_set_dataset_state,
+    get_threads_resource,
 )
 
 from airflow.configuration import conf as airflow_conf

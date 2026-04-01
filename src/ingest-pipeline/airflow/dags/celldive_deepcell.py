@@ -25,7 +25,8 @@ from utils import (
     get_auth_tok,
     get_parent_dataset_uuid,
     post_to_slack_notify,
-    env_appropriate_slack_channel
+    env_appropriate_slack_channel,
+    get_threads_resource,
 )
 
 from hubmap_operators.common_operators import (
