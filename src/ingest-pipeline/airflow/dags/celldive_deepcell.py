@@ -236,4 +236,3 @@ with HMDAG(
 
     )
     t_maybe_keep_cwl_segmentation >> t_set_dataset_error
-    t_maybe_keep_cwl_stellar_pre_convert >> t_set_dataset_error

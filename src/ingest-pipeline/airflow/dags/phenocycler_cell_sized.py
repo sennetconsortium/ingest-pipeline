@@ -33,6 +33,7 @@ from utils import (
     build_dataset_name as inner_build_dataset_name,
     make_send_status_msg_function,
     get_dataset_uuid,
+    get_local_vm
 )
 
 

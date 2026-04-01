@@ -29,7 +29,6 @@ from utils import (
     get_local_vm,
 )
 
-from airflow.configuration import conf as airflow_conf
 from airflow.decorators import task
 from airflow.operators.bash import BashOperator
 from airflow.operators.empty import EmptyOperator
@@ -213,7 +212,7 @@ with HMDAG(
             "metadata": kwargs["dag_run"].conf.get("metadata"),
             "crypt_auth_tok": kwargs["dag_run"].conf.get("crypt_auth_tok"),
             "workflows": kwargs["ti"].xcom_pull(
-                task_ids="build_cwl_stellar_pre_convert", key="cwl_workflows"
+                task_ids="build_cwl_segmentation", key="cwl_workflows"
             ),
         }
         print(
@@ -280,4 +279,3 @@ with HMDAG(
     )
     t_maybe_start_small_sprm >> t_trigger_phenocyler
     t_maybe_keep_cwl_segmentation >> t_set_dataset_error
-    t_maybe_keep_cwl_stellar_pre_convert >> t_set_dataset_error
