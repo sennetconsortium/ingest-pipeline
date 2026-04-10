@@ -1,10 +1,9 @@
 import os
 from datetime import datetime, timedelta
 from pathlib import Path
-import pandas as pd
 
 from airflow.operators.bash import BashOperator
-from airflow.operators.empty import EmptyOperator
+from airflow.operators.dummy import DummyOperator
 from airflow.operators.python import BranchPythonOperator, PythonOperator
 from airflow.decorators import task
 
@@ -29,14 +28,16 @@ from utils import (
     make_send_status_msg_function,
     get_tmp_dir_path,
     HMDAG,
+    pythonop_get_dataset_state,
     get_queue_resource,
     get_threads_resource,
     get_preserve_scratch_resource,
-    get_local_vm,
     get_cwl_cmd_from_workflows,
+    get_local_vm,
 )
 
 from extra_utils import build_tag_containers
+
 
 default_args = {
     "owner": "hubmap",
@@ -48,46 +49,40 @@ default_args = {
     "retries": 1,
     "retry_delay": timedelta(minutes=1),
     "xcom_push": True,
-    "queue": get_queue_resource("visium_with_probes"),
+    "queue": get_queue_resource("xenium"),
     "executor_config": {"SlurmExecutor": {"output": "/home/codcc/airflow-logs/slurm/%x_%N_%j.out",
-                                          "cpus-per-task": str(get_threads_resource("visium_with_probes"))}},
+                                              "cpus-per-task": str(get_threads_resource("xenium"))}},
     "on_failure_callback": utils.create_dataset_state_error_callback(get_uuid_for_error),
 }
 
-
-def find_rna_metadata_file(data_dir: Path) -> Path:
-    for path in data_dir.glob("*.tsv"):
-        name_lower = path.name.lower()
-        if path.is_file() and "rna" in name_lower and "metadata" in name_lower:
-            return path
-    raise ValueError("Couldn't find RNA-seq metadata file")
-
-
 with HMDAG(
-    "visium_with_probes",
+    "xenium",
     schedule_interval=None,
     is_paused_upon_creation=False,
     default_args=default_args,
     user_defined_macros={
         "tmp_dir_path": get_tmp_dir_path,
-        "preserve_scratch": get_preserve_scratch_resource("visium_with_probes"),
+        "preserve_scratch": get_preserve_scratch_resource("xenium"),
     },
 ) as dag:
-
     workflow_version = "1.0.0"
-    workflow_description = "The pipeline for Visium data with probe-based sequencing results uses BWA for short read alignment to a custom genome index based on the probe set used for the assay and converts the resulting capture bead by gene matrix to the h5ad format, which is used by ScanPy for downstream analysis including dimensionality reduction, unsupervised clustering, and differential expression analysis. Additionally, spatial registration of barcodes to positions in histology data is done using the vendor’s alignment.json file where present, or performed automatically if the file is absent. These coordinates in conjunction with the sequencing data are used by SquidPy to perform some spatial analysis on the data."
+    workflow_description = "The Xenium pipeline converts the vendor's pipeline outputs into h5ad and zarr-backed SpatialData objects.  It then performs our standard analysis pipeline of dimensionality reduction, clustering, and differenital expression analysis with ScanPy and spatial analysis with SquidPy."
 
     cwl_workflows = [
         {
-            "workflow_path": str(get_absolute_workflow(Path("visium-pipeline", "pipeline.cwl"))),
+            "workflow_path": str(get_absolute_workflow(Path("xenium-pipeline", "pipeline.cwl"))),
             "documentation_url": "",
         },
         {
-            "workflow_path": str(get_absolute_workflow(Path("portal-containers", "h5ad-to-arrow.cwl"))),
+            "workflow_path": str(
+                get_absolute_workflow(Path("portal-containers", "h5ad-to-arrow.cwl"))
+            ),
             "documentation_url": "",
         },
         {
-            "workflow_path": str(get_absolute_workflow(Path("portal-containers", "anndata-to-ui.cwl"))),
+            "workflow_path": str(
+                get_absolute_workflow(Path("portal-containers", "anndata-to-ui.cwl"))
+            ),
             "documentation_url": "",
         },
         {
@@ -95,13 +90,15 @@ with HMDAG(
             "documentation_url": "",
         },
         {
-            "workflow_path": str(get_absolute_workflow(Path("portal-containers", "ome-tiff-offsets.cwl"))),
+            "workflow_path": str(
+                get_absolute_workflow(Path("portal-containers", "ome-tiff-offsets.cwl"))
+            ),
             "documentation_url": "",
-        }
+        },
     ]
 
     def build_dataset_name(**kwargs):
-        return inner_build_dataset_name(dag.dag_id, "visium-pipeline", **kwargs)
+        return inner_build_dataset_name(dag.dag_id, "salmon-rnaseq", **kwargs)
 
     @task(task_id="prepare_cwl1")
     def prepare_cwl_cmd1(**kwargs):
@@ -113,13 +110,13 @@ with HMDAG(
 
     prepare_cwl1 = prepare_cwl_cmd1()
 
-    prepare_cwl2 = EmptyOperator(task_id="prepare_cwl2")
+    prepare_cwl2 = DummyOperator(task_id="prepare_cwl2")
 
-    prepare_cwl3 = EmptyOperator(task_id="prepare_cwl3")
+    prepare_cwl3 = DummyOperator(task_id="prepare_cwl3")
 
-    prepare_cwl4 = EmptyOperator(task_id="prepare_cwl4")
+    prepare_cwl4 = DummyOperator(task_id="prepare_cwl4")
 
-    prepare_cwl5 = EmptyOperator(task_id="prepare_cwl5")
+    prepare_cwl5 = DummyOperator(task_id="prepare_cwl5")
 
     def build_cwltool_cmd1(**kwargs):
         run_id = kwargs["run_id"]
@@ -129,25 +126,29 @@ with HMDAG(
         data_dir = get_parent_data_dir(**kwargs)
         print("data_dirs: ", data_dir)
 
-        rna_metadata_file = find_rna_metadata_file(data_dir)
-        metadata_df = pd.read_csv(rna_metadata_file, sep='\t')
-        probe_set = metadata_df.oligo_probe_panel.iloc[0]
-        probe_set_version = 2 if "v2" in probe_set else 1
+        source_type = ""
+        unique_source_types = set()
+        for parent_uuid in get_parent_dataset_uuids_list(**kwargs):
+            dataset_state = pythonop_get_dataset_state(
+                dataset_uuid_callable=lambda **kwargs: parent_uuid, **kwargs
+            )
+            source_type = dataset_state.get("source_type")
+            if source_type == "mixed":
+                print("Force failure. Should only be one unique source_type for a dataset.")
+            else:
+                unique_source_types.add(source_type)
+
+        if len(unique_source_types) > 1:
+            print("Force failure. Should only be one unique source_type for a dataset.")
+        else:
+            source_type = unique_source_types.pop().lower()
 
         cwl_parameters = [
-            {"parameter_name": "--outdir", "value": str(tmpdir / "cwl_out")},
             {"parameter_name": "--parallel", "value": ""},
         ]
-
         input_parameters = [
-
-            {"parameter_name": "--assay", "value": "visium-ff"},
-            {"parameter_name": "--threads", "value": get_threads_resource(dag.dag_id,
-                                                                          "build_cmd1")},
-            {"parameter_name": "--fastq_dir", "value": str(data_dir / "raw/fastq/")},
-            {"parameter_name": "--img_dir", "value": str(data_dir / "lab_processed/images/")},
-            {"parameter_name": "--metadata_dir", "value": str(data_dir / "raw")},
-            {"parameter_name": "--visium_probe_set_version", "value": probe_set_version},
+            {"parameter_name": "--assay", "value": "xenium"},
+            {"parameter_name": "--data_dir", "value": str(data_dir)},
         ]
 
         command = get_cwl_cmd_from_workflows(
@@ -166,7 +167,6 @@ with HMDAG(
         cwl_parameters = [
             {"parameter_name": "--outdir", "value": str(tmpdir / "cwl_out/hubmap_ui")},
         ]
-
         input_parameters = [
             {"parameter_name": "--input_dir", "value": str(tmpdir / "cwl_out")},
         ]
@@ -186,7 +186,6 @@ with HMDAG(
         cwl_parameters = [
             {"parameter_name": "--outdir", "value": str(tmpdir / "cwl_out/hubmap_ui")},
         ]
-
         input_parameters = [
             {"parameter_name": "--input_dir", "value": str(tmpdir / "cwl_out")},
         ]
@@ -210,15 +209,13 @@ with HMDAG(
         workflows = kwargs["ti"].xcom_pull(key="cwl_workflows", task_ids="build_cmd3")
 
         input_parameters = [
-            {"parameter_name": "--processes", "value": get_threads_resource(dag.dag_id,
-                                                                            "build_cmd4")},
-            {"parameter_name": "--ometiff_directory", "value": str(data_dir / "lab_processed/images/")},
-            {"parameter_name": "--output_filename", "value": "visium_histology_hires_pyramid.ome.tif"},
+            {"parameter_name": "--processes", "value": get_threads_resource(dag.dag_id)},
+            {
+                "parameter_name": "--ometiff_directory",
+                "value": str(data_dir / "lab_processed/images/"),
+            },
         ]
-
-        command = get_cwl_cmd_from_workflows(
-            workflows, 3, input_parameters, tmpdir, kwargs["ti"]
-        )
+        command = get_cwl_cmd_from_workflows(workflows, 3, input_parameters, tmpdir, kwargs["ti"])
 
         return join_quote_command_str(command)
 
@@ -236,9 +233,7 @@ with HMDAG(
         input_parameters = [
             {"parameter_name": "--input_dir", "value": str(data_dir / "ometiff-pyramids")},
         ]
-        command = get_cwl_cmd_from_workflows(
-            workflows, 4, input_parameters, tmpdir, kwargs["ti"]
-        )
+        command = get_cwl_cmd_from_workflows(workflows, 4, input_parameters, tmpdir, kwargs["ti"])
 
         return join_quote_command_str(command)
 
@@ -399,7 +394,7 @@ with HMDAG(
             "previous_revision_uuid_callable": get_previous_revision_uuid,
             "http_conn_id": "ingest_api_connection",
             "dataset_name_callable": build_dataset_name,
-            "pipeline_shorthand": "BWA + Scanpy",
+            "pipeline_shorthand": "SpatialData + Scanpy",
         },
         executor_config={"SlurmExecutor": {
             "output": "/home/codcc/airflow-logs/slurm/%x_%N_%j.out",
@@ -415,8 +410,8 @@ with HMDAG(
         op_kwargs={
             "dataset_uuid_callable": get_dataset_uuid,
             "ds_state": "Error",
-            "message": f"An error occurred in visium pipeline",
-            "pipeline_name": "visium"
+            "message": f"An error occurred in xenium-pipeline",
+            "pipeline_name": "xenium-pipeline"
         },
         executor_config={"SlurmExecutor": {
             "output": "/home/codcc/airflow-logs/slurm/%x_%N_%j.out",
@@ -426,7 +421,14 @@ with HMDAG(
 
     send_status_msg = make_send_status_msg_function(
         dag_file=__file__,
-        retcode_ops=["pipeline_exec", "move_data", "convert_for_ui", "convert_for_ui_2"],
+        retcode_ops=[
+            "pipeline_exec",
+            "move_data",
+            "convert_for_ui",
+            "convert_for_ui_2",
+            "pipeline_exec_cwl_ome_tiff_pyramid",
+            "pipeline_exec_cwl_ome_tiff_offsets",
+        ],
         cwl_workflows=lambda **kwargs: kwargs["ti"].xcom_pull(
             key="cwl_workflows", task_ids="build_cmd5"
         ),
@@ -447,28 +449,38 @@ with HMDAG(
     t_log_info = LogInfoOperator(task_id="log_info",
                                  executor_config={"SlurmExecutor": {
                                      "output": "/home/codcc/airflow-logs/slurm/%x_%N_%j.out",
-                                     "nodelist": get_local_vm(os.environ["AIRFLOW_CONN_AIRFLOW_CONNECTION"]),
-                                     "mem": "2G"}},)
+                                     "nodelist": get_local_vm(
+                                         os.environ["AIRFLOW_CONN_AIRFLOW_CONNECTION"]),
+                                     "mem": "2G"}},
+                                 )
     t_join = JoinOperator(task_id="join",
                           executor_config={"SlurmExecutor": {
                               "output": "/home/codcc/airflow-logs/slurm/%x_%N_%j.out",
-                              "nodelist": get_local_vm(os.environ["AIRFLOW_CONN_AIRFLOW_CONNECTION"]),
-                              "mem": "2G"}},)
+                              "nodelist": get_local_vm(
+                                  os.environ["AIRFLOW_CONN_AIRFLOW_CONNECTION"]),
+                              "mem": "2G"}},
+                          )
     t_create_tmpdir = CreateTmpDirOperator(task_id="create_tmpdir",
                                            executor_config={"SlurmExecutor": {
                                                "output": "/home/codcc/airflow-logs/slurm/%x_%N_%j.out",
-                                               "nodelist": get_local_vm(os.environ["AIRFLOW_CONN_AIRFLOW_CONNECTION"]),
-                                               "mem": "2G"}},)
+                                               "nodelist": get_local_vm(
+                                                   os.environ["AIRFLOW_CONN_AIRFLOW_CONNECTION"]),
+                                               "mem": "2G"}},
+                                           )
     t_cleanup_tmpdir = CleanupTmpDirOperator(task_id="cleanup_tmpdir",
                                              executor_config={"SlurmExecutor": {
                                                  "output": "/home/codcc/airflow-logs/slurm/%x_%N_%j.out",
-                                                 "nodelist": get_local_vm(os.environ["AIRFLOW_CONN_AIRFLOW_CONNECTION"]),
-                                                 "mem": "2G"}},)
+                                                 "nodelist": get_local_vm(
+                                                     os.environ["AIRFLOW_CONN_AIRFLOW_CONNECTION"]),
+                                                 "mem": "2G"}},
+                                             )
     t_move_data = MoveDataOperator(task_id="move_data",
                                    executor_config={"SlurmExecutor": {
                                        "output": "/home/codcc/airflow-logs/slurm/%x_%N_%j.out",
-                                       "nodelist": get_local_vm(os.environ["AIRFLOW_CONN_AIRFLOW_CONNECTION"]),
-                                       "mem": "2G"}},)
+                                       "nodelist": get_local_vm(
+                                           os.environ["AIRFLOW_CONN_AIRFLOW_CONNECTION"]),
+                                       "mem": "2G"}},
+                                   )
 
     (
         t_log_info
@@ -511,4 +523,5 @@ with HMDAG(
     t_maybe_keep_cwl4 >> t_set_dataset_error
     t_maybe_keep_cwl5 >> t_set_dataset_error
     t_set_dataset_error >> t_join
+    t_maybe_create_dataset >> t_join
     t_join >> t_cleanup_tmpdir

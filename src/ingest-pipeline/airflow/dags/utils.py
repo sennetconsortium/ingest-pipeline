@@ -1,4 +1,5 @@
 import json
+import logging
 import math
 import os
 import re
@@ -14,6 +15,7 @@ from os.path import basename, dirname, exists, getsize, join, realpath, relpath,
 from pathlib import Path
 from pprint import pprint
 from subprocess import CalledProcessError, check_output
+from textwrap import dedent
 from typing import (
     Any,
     Callable,
@@ -40,12 +42,12 @@ from schema_utils import (
 from schema_utils import (
     localized_assert_json_matches_schema as assert_json_matches_schema,
 )
-from status_change.status_manager import EntityUpdateException, StatusChanger
 
 from airflow import DAG
 from airflow.configuration import conf as airflow_conf
 from airflow.models.baseoperator import BaseOperator
 from airflow.providers.http.hooks.http import HttpHook
+from airflow.utils.email import send_email as airflow_send_email
 
 airflow_conf.read(join(environ["AIRFLOW_HOME"], "instance", "app.cfg"))
 try:
@@ -102,6 +104,7 @@ FILE_TYPE_MATCHERS = [
     (r"^.*\.arrow$", "arrow"),
     (r"(^.*\.fastq$)|(^.*\.fastq.gz$)", "fastq"),
     (r"(^.*\.yml$)|(^.*\.yaml$)", "yaml"),
+    (r"^.*\.zip$", "zip"),
 ]
 COMPILED_TYPE_MATCHERS: Optional[List[Tuple[Pattern, str]]] = None
 
@@ -119,6 +122,8 @@ RESOURCE_MAP_FILENAME = "resource_map.yml"  # Expected to be found in this same 
 RESOURCE_MAP_SCHEMA = "resource_map_schema.yml"
 COMPILED_RESOURCE_MAP: Optional[List[Tuple[Pattern, int, Dict[str, Any]]]] = None
 
+CURATION_CONTACTS = ["bhonick@psc.edu", "dbordelon@psc.edu", "egaskin@psc.edu"]
+CURATION_OFFICE_HOURS_SCHEDULING_LINK = "https://calendar.app.google/db2J6CDzZQuQnGHr6"
 
 # Parameters used to generate scRNA and scATAC analysis DAGs; these
 # are the only fields which differ between assays and DAGs
@@ -509,6 +514,10 @@ def get_uuid_for_error(**kwargs) -> Optional[str]:
     return rslt
 
 
+def get_run_id(**kwargs) -> str | None:
+    return kwargs["ti"].xcom_pull(key="run_id")
+
+
 def get_git_commits(file_list: StrOrListStr) -> StrOrListStr:
     """
     Given a list of file paths, return a list of the current short commit hashes of those files
@@ -773,14 +782,16 @@ def get_file_metadata_dict(
     This routine returns file metadata, either directly as JSON in the form
     {'files': [{...}, {...}, ...]} with the list returned by get_file_metadata() or the form
     {'files_info_alt_path': path} where path is the path of a unique file in alt_file_dir
-    relative to the WORKFLOW_SCRATCH config parameter
+    relative to the WORKFLOW_SCRATCH config parameter.  Setting max_in_line_files to a
+    value less than zero will cause the file info to be returned in-line regardless of
+    length.
     """
     if not pipeline_file_manifests:
         matcher = DummyFileMatcher()
     else:
         matcher = PipelineFileMatcher.create_from_files(pipeline_file_manifests)
     file_info = get_file_metadata(root_dir, matcher)
-    if len(file_info) > max_in_line_files:
+    if max_in_line_files >= 0 and len(file_info) > max_in_line_files:
         assert_json_matches_schema(file_info, "file_info_schema.yml")
         fpath = join(alt_file_dir, "{}.json".format(uuid.uuid4()))
         with open(fpath, "w") as f:
@@ -890,6 +901,7 @@ def pythonop_send_create_dataset(**kwargs) -> str:
     'derived_dataset_uuid' : uuid for the created dataset
     'group_uuid' : group uuid for the created dataset
     """
+    from status_change.status_manager import call_message_managers
 
     for arg in ["parent_dataset_uuid_callable", "http_conn_id"]:
         assert arg in kwargs, "missing required argument {}".format(arg)
@@ -990,6 +1002,15 @@ def pythonop_send_create_dataset(**kwargs) -> str:
         uuid = response_json["uuid"]
         group_uuid = response_json["group_uuid"]
 
+        # Send confirmation message that derived dataset has been created
+        call_message_managers(
+            response_json.get("status"),
+            uuid,
+            get_auth_tok(**kwargs),
+            messages={"run_id": kwargs.get("run_id", ""), "parent_dataset_uuid": source_uuids[0]},
+            message_classes=["SlackManager"],
+        )
+
         response = HttpHook("GET", http_conn_id=http_conn_id).run(
             endpoint=f"datasets/{uuid}/file-system-abs-path",
             headers=headers,
@@ -1009,10 +1030,6 @@ def pythonop_send_create_dataset(**kwargs) -> str:
             raise RuntimeError(f"authorization for {endpoint} was rejected?")
         raise RuntimeError(f"misc error {e} on {endpoint}")
 
-    # Added path prefix to avoid copying over moving for moonshot infrastructure
-    dct = airflow_conf.as_dict(display_sensitive=True)["connections"]
-    if "PATH_PREFIX" in dct:
-        abs_path = dct["PATH_PREFIX"].strip("'") + abs_path
     kwargs["ti"].xcom_push(key="group_uuid", value=group_uuid)
     kwargs["ti"].xcom_push(key="derived_dataset_uuid", value=uuid)
     kwargs["ti"].xcom_push(key="previous_revision_path", value=previous_revision_path)
@@ -1028,11 +1045,16 @@ def pythonop_set_dataset_state(**kwargs) -> None:
     Accepts the following via the caller's op_kwargs:
     'dataset_uuid_callable' : called with **kwargs; returns the
                               uuid of the dataset to be modified
+    'parent_dataset_uuid_callable' : called with **kwargs; returns the
+                              uuid of the parent dataset
     'http_conn_id' : the http connection to be used.  Default is "entity_api_connection"
     'ds_state' : one of 'QA', 'Processing', 'Error', 'Invalid'. Default: 'Processing'
     'message' : update message, saved as dataset metadata element "pipeline_message".
                 The default is not to save any message.
+    'pipeline_name' : allows MessageManager classes to identify this as a processing run
     """
+    from status_change.status_manager import StatusChanger, call_message_managers
+
     if kwargs["dag_run"].conf.get("dryrun"):
         return
     for arg in ["dataset_uuid_callable"]:
@@ -1040,20 +1062,52 @@ def pythonop_set_dataset_state(**kwargs) -> None:
 
     reindex = kwargs.get("reindex", True)
     dataset_uuid = kwargs["dataset_uuid_callable"](**kwargs)
-    run_id = kwargs["get_run_id"](**kwargs) if callable(kwargs.get("get_run_id")) else None
+    run_id = (
+        kwargs["run_id_callable"](**kwargs) if callable(kwargs.get("run_id_callable")) else None
+    )
     http_conn_id = kwargs.get("http_conn_id", "entity_api_connection")
     status = kwargs["ds_state"] if "ds_state" in kwargs else "Processing"
-    message = kwargs.get("message", None)
-    if dataset_uuid is not None:
+    pipeline_message = kwargs.get("message")
+    pipeline = kwargs.get("pipeline_name") or kwargs.get("pipeline_shorthand")
+    messages = {"run_id": run_id, "processing_pipeline": pipeline}
+    if dataset_uuid:
         StatusChanger(
             dataset_uuid,
             get_auth_tok(**kwargs),
             status=status,
-            fields_to_overwrite={"pipeline_message": message} if message else {},
+            fields_to_overwrite={"pipeline_message": pipeline_message} if pipeline_message else {},
             http_conn_id=http_conn_id,
             reindex=reindex,
-            run_id=run_id,
+            messages=messages,
         ).update()
+    else:
+        # Likely a processing pipeline failed before creating derived dataset;
+        # try to message based on the primary if this is coming from a pipeline
+        try:
+            uuid = get_any_dataset_uuid(**kwargs)
+        except Exception as e:
+            logging.error(e)
+            return
+        if uuid and pipeline:
+            call_message_managers(
+                str(status),
+                uuid,
+                get_auth_tok(**kwargs),
+                messages=messages,
+                message_classes=["SlackManager"],
+            )
+
+
+def get_any_dataset_uuid(**kwargs) -> str | None:
+    try:
+        if not (uuid := kwargs["ti"].xcom_pull(key="uuid")):
+            if not (uuid := get_uuid_for_error(**kwargs)):
+                return
+        return uuid
+    except Exception:
+        raise Exception(
+            "Could not determine UUID, no status change or messaging actions will be taken."
+        )
 
 
 def restructure_entity_metadata(raw_metadata: JSONType) -> JSONType:
@@ -1234,6 +1288,44 @@ def _generate_slices(id_to_slice: str) -> Iterable[str]:
             yield f"{base}-{idx}"
     else:
         yield id_to_slice
+
+
+def pythonop_build_dataset_lists(**kwargs) -> None:
+    """
+    Given a list of uuids in dag_run.conf["uuids"], add 3 lists of uuids
+    to dag_run.conf:
+    - "primary_datasets", containing uuids of primary datasets
+    - "processed_datasets", containing uuids of processed datasets
+    - "component_datasets", containing uuids of component datasets
+    """
+    kwargs["dag_run"].conf["primary_datasets"] = []
+    kwargs["dag_run"].conf["processed_datasets"] = []
+    kwargs["dag_run"].conf["component_datasets"] = []
+
+    for uuid in kwargs["dag_run"].conf["uuids"]:
+        soft_data = get_soft_data(uuid, **kwargs)
+        ds_rslt = pythonop_get_dataset_state(dataset_uuid_callable=lambda **kwargs: uuid, **kwargs)
+
+        # If we got nothing back from soft_data, then let's try to determine using entity_api
+        if soft_data:
+            if soft_data.get("primary") or soft_data.get("assaytype") == "publication":
+                if ds_rslt["creation_action"] == "Multi-Assay Split":
+                    kwargs["dag_run"].conf["component_datasets"].append(uuid)
+                else:
+                    kwargs["dag_run"].conf["primary_datasets"].append(uuid)
+            else:
+                kwargs["dag_run"].conf["processed_datasets"].append(uuid)
+        else:
+            print(f"No matching soft data returned for {uuid}")
+            if ds_rslt.get("dataset_info"):
+                # dataset_info should only be populated for processed_datasets
+                print(ds_rslt.get("dataset_info"))
+                kwargs["dag_run"].conf["processed_datasets"].append(uuid)
+            else:
+                if ds_rslt["creation_action"] == "Multi-Assay Split":
+                    kwargs["dag_run"].conf["component_datasets"].append(uuid)
+                else:
+                    kwargs["dag_run"].conf["primary_datasets"].append(uuid)
 
 
 def assert_id_known(id_to_check: str, **kwargs) -> None:
@@ -1476,6 +1568,7 @@ def make_send_status_msg_function(
     no file metadata will be included.  Note that file metadata may also be excluded
     based on the return value of 'dataset_lz_path_fun' above.
     """
+    from status_change.status_manager import EntityUpdateException, StatusChanger
 
     # Does the string represent a "true" value, or an int that is 1
     def __is_true(val):
@@ -1488,6 +1581,16 @@ def make_send_status_msg_function(
         return False
 
     def send_status_msg(**kwargs) -> bool:
+        # add pipeline info right away if present in case FailureCallback is triggered
+        pipeline = any(
+            [
+                bool(workflow_description),
+                bool(cwl_workflows),
+                bool([op for op in retcode_ops if op.startswith("pipeline_exec")]),
+            ]
+        )
+        if pipeline:
+            kwargs["ti"].xcom_push(key="pipeline_name", value=Path(dag_file).stem)
         retcodes = [kwargs["ti"].xcom_pull(task_ids=op) for op in retcode_ops]
         retcodes = [int(rc or "0") for rc in retcodes]
         print("retcodes: ", {k: v for k, v in zip(retcode_ops, retcodes)})
@@ -1572,6 +1675,9 @@ def make_send_status_msg_function(
 
             # Refactoring metadata structure
             contacts = []
+            antibodies = md.get("metadata", {}).pop("antibodies", [])
+            contributors = md.get("metadata", {}).pop("contributors", [])
+            calculated_metadata = md.get("metadata", {}).pop("calculated_metadata", {})
             if metadata_fun:
                 # Always override the value if files_info_alt_path is set, or if md["files"] is empty
                 files_info_alt_path = md["metadata"].pop("files_info_alt_path", [])
@@ -1585,9 +1691,6 @@ def make_send_status_msg_function(
                     "collectiontype": md["metadata"].pop("collectiontype", None)
                 }
                 # md["thumbnail_file_abs_path"] = thumbnail_file_abs_path
-                antibodies = md["metadata"].pop("antibodies", [])
-                contributors = md["metadata"].pop("contributors", [])
-                calculated_metadata = md["metadata"].pop("calculated_metadata", {})
                 md["metadata"] = md["metadata"].pop("metadata", {})
                 for contrib in contributors:
                     if "is_contact" in contrib:
@@ -1655,8 +1758,14 @@ def make_send_status_msg_function(
                 "pipeline_message": err_txt[-20000:],
             }
             return_status = False
+
+        messages = kwargs["ti"].xcom_pull(task_ids="run_validation", key="report_data") or {} | {
+            "run_id": kwargs.get("run_id")
+        }
+        if pipeline == True:
+            messages["processing_pipeline"] = Path(dag_file).stem
         if status:
-            if kwargs["dag"].dag_id == "multiassay_component_metadata":
+            if kwargs["dag"].dag_id in ["multiassay_component_metadata", "reorganize_multiassay"]:
                 status = None
             try:
                 StatusChanger(
@@ -1665,8 +1774,7 @@ def make_send_status_msg_function(
                     status=status,
                     fields_to_overwrite=extra_fields,
                     reindex=reindex,
-                    run_id=kwargs.get("run_id"),
-                    message=kwargs["ti"].xcom_pull(task_ids="run_validation", key="error_counts"),
+                    messages=messages,
                 ).update()
             except EntityUpdateException:
                 return_status = False
@@ -1699,7 +1807,7 @@ def create_dataset_state_error_callback(
         """
         This routine is meant to be
         """
-        if kwargs["dag_run"].conf.get("dryrun"):
+        if (dag_run := kwargs.get("dag_run")) and dag_run.conf.get("dryrun"):
             return None
         msg = "An internal error occurred in the {} workflow step {}".format(
             context_dict["dag"].dag_id, context_dict["task"].task_id
@@ -1946,23 +2054,53 @@ def gather_calculated_metadata(**kwargs):
     return {"calculated_metadata": output_metadata}
 
 
-def search_api_reindex(uuid, **kwargs):
-    auth_token = get_auth_tok(**kwargs)
-    search_hook = HttpHook("PUT", http_conn_id="search_api_connection")
-    headers = {
-        "authorization": f"Bearer {auth_token}",
-        "content-type": "text/plain",
-        "X-SenNet-Application": "search-api",
-    }
+def post_to_slack_notify(token: str, message: str, channel: str):
+    http_hook = HttpHook("POST", http_conn_id="ingest_api_connection")
+    payload = json.dumps({"message": message, "channel": channel})
+    headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+    response = http_hook.run("/notify", payload, headers)
+    response.raise_for_status()
+
+
+def env_appropriate_slack_channel(prod_channel: str) -> str:
+    default = "C0A8ES4M9RU"  # test-notifications
+    entity_host = HttpHook.get_connection("entity_api_connection").host or ""
+    try:
+        env = find_matching_endpoint(entity_host) or ""
+    except AssertionError:
+        env = "dev"
+    if env.lower() == "prod":
+        return prod_channel
+    return default
+
+
+# This is simplified from pythonop_get_dataset_state in utils
+def get_submission_context(token: str, uuid: str, headers: dict | None = None) -> dict[str, Any]:
+    """
+    uuid can also be a HuBMAP/SenNet ID.
+    """
+    if not headers:
+        headers = {
+            "authorization": f"Bearer {token}",
+            "content-type": "application/json",
+            f"X-Hubmap-Application": "ingest-pipeline",
+        }
+    http_hook = HttpHook("GET", http_conn_id="entity_api_connection")
+
+    endpoint = f"entities/{uuid}?exclude=direct_ancestors.files"
 
     try:
-        response = search_hook.run(endpoint=f"reindex/{uuid}", headers=headers, extra_options=[])
+        response = http_hook.run(
+            endpoint, headers=headers, extra_options={"check_response": False}
+        )
         response.raise_for_status()
+        return response.json()
     except HTTPError as e:
-        print(f"Redinex for {uuid} failed. ERROR: {e}")
-        return False
-
-    return True
+        print(f"ERROR: {e}")
+        if e.response.status_code == codes.unauthorized:
+            raise RuntimeError("entity database authorization was rejected?")
+        print("benign error")
+        return {}
 
 
 def main():
@@ -2014,6 +2152,86 @@ def main():
     crypt_s = encrypt_tok(s)
     s2 = decrypt_tok(crypt_s)
     print("crypto test: {} -> {} -> {}".format(s, crypt_s, s2))
+
+
+def get_config_value_int_recipients() -> list[str]:
+    """
+    Allows setting default internal email recipients at the config level;
+    overrides values passed into send_email if prod_only=True
+    """
+    conf_dict = airflow_conf.as_dict()
+    if int_recipients := conf_dict.get("email_notifications", {}).get("int_recipients"):
+        return [str(address) for address in [int_recipients]]
+    return []
+
+
+def get_config_value_ext_recipients() -> list[str]:
+    """
+    Allows setting default external email recipients at the config level;
+    overrides values passed into send_email if prod_only=True
+    """
+    conf_dict = airflow_conf.as_dict()
+    if main_recipient := conf_dict.get("email_notifications", {}).get("main"):
+        return [str(main_recipient)]
+    return []
+
+
+def send_email(
+    contacts: list[str],
+    subject: str,
+    email_body: str,
+    attachment_path: Optional[str] = None,
+    cc: Optional[list[str]] = None,
+    bcc: Optional[list[str]] = None,
+    prod_only: bool = True,
+) -> bool:
+    assert contacts and email_body
+    if type(contacts) is str:
+        contacts = [contacts]
+    preview = dedent(
+        f"""
+            Contact: {", ".join(contacts)}
+            cc: {", ".join(cc) if cc else "None"}
+            bcc: {", ".join(bcc) if bcc else "None"}
+            Subject: {subject}
+            Message: {email_body}
+            {("Attachment path: " + attachment_path) if attachment_path else "None"}
+            """
+    ).strip()
+    contacts = list(set(contacts))
+    if prod_only:
+        host_str = HttpHook.get_connection("entity_api_connection").host
+        env = find_matching_endpoint(host_str) if host_str else ""
+        if env.lower() != "prod":
+            logging.info("Non-prod environment, fetching overrides from config.")
+            contacts = []
+            cc = None
+            bcc = None
+            if config_ext_recipients := get_config_value_int_recipients():
+                contacts = config_ext_recipients
+            if config_int_recipients := get_config_value_int_recipients():
+                logging.info(f"Internal recipients: {config_int_recipients}")
+            if not contacts:
+                logging.info("No contacts found in airflow_conf, not sending. Would have sent:")
+                logging.info(preview)
+                return False
+            else:
+                logging.info(
+                    f"Sending email to {config_ext_recipients}. Preview of real data below:"
+                )
+    if cc:
+        # If a contact is in both lists, remove them from cc
+        cc = list(set(cc) - set(contacts))
+    logging.info(preview)
+    airflow_send_email(
+        contacts,
+        subject,
+        email_body,
+        files=[attachment_path] if attachment_path else None,
+        cc=cc,
+        bcc=bcc,
+    )
+    return True
 
 
 if __name__ == "__main__":

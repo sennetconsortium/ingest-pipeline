@@ -1,4 +1,3 @@
-import json
 import logging
 import os
 import sys
@@ -11,15 +10,16 @@ from hubmap_operators.common_operators import (
     CreateTmpDirOperator,
     SetDatasetProcessingOperator,
 )
+from status_change.callbacks.failure_callback import FailureCallback
 from status_change.status_manager import StatusChanger, Statuses
 from utils import (
     HMDAG,
     get_auth_tok,
     get_preserve_scratch_resource,
     get_queue_resource,
-    pythonop_get_dataset_state,
     get_threads_resource,
     get_tmp_dir_path,
+    pythonop_get_dataset_state,
     get_local_vm,
 )
 
@@ -28,7 +28,7 @@ from airflow.exceptions import AirflowException
 from airflow.operators.python import PythonOperator
 from airflow.providers.http.hooks.http import HttpHook
 
-sys.path.append(airflow_conf.as_dict()["connections"]["SRC_PATH"].strip("'").strip('"'))
+sys.path.append(str(airflow_conf.as_dict()["connections"]["SRC_PATH"]).strip("'").strip('"'))
 from submodules import ingest_validation_tools_upload  # noqa E402
 from submodules import ingest_validation_tests, ingest_validation_tools_error_report
 
@@ -36,7 +36,7 @@ sys.path.pop()
 
 
 def get_dataset_uuid(**kwargs):
-    lz_path, uuid = __get_lzpath_uuid(**kwargs)
+    _, uuid = __get_lzpath_uuid(**kwargs)
     return uuid
 
 
@@ -55,7 +55,7 @@ default_args = {
     "executor_config": {"SlurmExecutor": {"output": "/home/codcc/airflow-logs/slurm/%x_%N_%j.out",
                                           "cpus-per-task": str(get_threads_resource("scan_and_begin_processing")),
                                           "mem": "250G"}},
-    "on_failure_callback": utils.create_dataset_state_error_callback(get_dataset_uuid),
+    "on_failure_callback": FailureCallback(__name__),
 }
 
 
@@ -98,12 +98,13 @@ with HMDAG(
 
     def run_validation(**kwargs):
         lz_path, uuid = __get_lzpath_uuid(**kwargs)
+        kwargs["ti"].xcom_push(key="uuid", value=uuid)
         plugin_path = [path for path in ingest_validation_tests.__path__][0]
 
         ignore_globs = [uuid, "extras", "*metadata.tsv", "validation_report.txt"]
         app_context = {
-            "entities_url": HttpHook.get_connection("entity_api_connection").host + "/entities/",
-            "uuid_url": HttpHook.get_connection("uuid_api_connection").host + "/uuid/",
+            "entities_url": f"{HttpHook.get_connection('entity_api_connection').host}/entities/",
+            "uuid_url": f"{HttpHook.get_connection('uuid_api_connection').host}/uuid/",
             "ingest_url": os.environ["AIRFLOW_CONN_INGEST_API_CONNECTION"],
             "request_header": {"X-Hubmap-Application": "ingest-pipeline"},
         }
@@ -115,8 +116,7 @@ with HMDAG(
             dataset_ignore_globs=ignore_globs,
             upload_ignore_globs="*",
             plugin_directory=plugin_path,
-            # offline=True,  # noqa E265
-            add_notes=False,
+            # offline_only=True,  # noqa E265
             extra_parameters={
                 "coreuse": get_threads_resource("validate_dataset", "run_validation")
             },
@@ -131,7 +131,10 @@ with HMDAG(
         validation_file_path = Path(get_tmp_dir_path(kwargs["run_id"])) / "validation_report.txt"
         with open(validation_file_path, "w") as f:
             f.write(report.as_text())
-        kwargs["ti"].xcom_push(key="error_counts", value=report.counts)
+        kwargs["ti"].xcom_push(
+            key="report_data",
+            value={"error_counts": report.counts, "error_dict": report.errors},
+        )
         kwargs["ti"].xcom_push(key="validation_file_path", value=str(validation_file_path))
 
     t_run_validation = PythonOperator(
@@ -144,29 +147,27 @@ with HMDAG(
     def send_status_msg(**kwargs):
         uuid = get_dataset_uuid(**kwargs)
         validation_file_path = Path(kwargs["ti"].xcom_pull(key="validation_file_path"))
-        error_counts = kwargs["ti"].xcom_pull(key="error_counts")
-        error_counts_print = (
-            json.dumps(error_counts, indent=9).strip("{}").replace('"', "").replace(",", "")
-        )
-        error_counts_msg = "; ".join([f"{k}: {v}" for k, v in error_counts.items()])
+        report_data = kwargs["ti"].xcom_pull(key="report_data") or {}
+        error_counts = report_data.get("error_counts", {})
+        error_counts_print = "; ".join([f"{key}: {value}" for key, value in error_counts.items()])
         with open(validation_file_path) as f:
             report_txt = f.read()
         if report_txt.startswith("No errors!"):
             status = Statuses.DATASET_QA
             extra_fields = {
-                "validation_message": "",
+                "pipeline_message": "",
             }
         else:
-            status = Statuses.DATASET_ERROR
+            status = Statuses.DATASET_INVALID
             extra_fields = {
-                "validation_message": report_txt,
+                "pipeline_message": error_counts_print,
             }
             if not error_counts:
                 logging.info("ERROR: status is invalid but error_counts not found.")
         logging.info(
             f"""
                      status: {status.value}
-                     validation_message: {extra_fields['validation_message']}
+                     pipeline_message: {extra_fields['pipeline_message']}
                      """
         )
         if error_counts:
@@ -178,12 +179,15 @@ with HMDAG(
                 ------------
                 """
             )
+        messages = kwargs["ti"].xcom_pull(key="report_data") or {} | {
+            "run_id": kwargs.get("run_id")
+        }
         StatusChanger(
             uuid,
             get_auth_tok(**kwargs),
             status=status,
-            run_id=kwargs.get("run_id"),
-            message=error_counts_msg,
+            fields_to_overwrite=extra_fields,
+            messages=messages,
         ).update()
 
     t_send_status = PythonOperator(
