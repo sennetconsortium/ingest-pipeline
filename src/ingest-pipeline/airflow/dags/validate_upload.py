@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import logging
 import os
 import sys
@@ -30,7 +29,7 @@ from airflow.exceptions import AirflowException
 from airflow.operators.python import PythonOperator
 from airflow.providers.http.hooks.http import HttpHook
 
-sys.path.append(airflow_conf.as_dict()["connections"]["SRC_PATH"].strip("'").strip('"'))
+sys.path.append(str(airflow_conf.as_dict()["connections"]["SRC_PATH"]).strip("'").strip('"'))
 
 from submodules import ingest_validation_tools_upload  # noqa E402
 from submodules import ingest_validation_tests, ingest_validation_tools_error_report
@@ -92,9 +91,10 @@ with HMDAG(
 
         if ds_rslt["entity_type"] != "Upload":
             raise AirflowException(f"{uuid} is not an Upload")
-        if ds_rslt["status"] not in ["New", "Submitted", "Invalid", "Processing"]:
-            raise AirflowException(f"status of Upload {uuid} {ds_rslt['status']}is not New, "
-                                   f"Submitted, or Invalid")
+        if ds_rslt["status"] not in ["New", "Submitted", "Invalid", "Error", "Processing"]:
+            raise AirflowException(
+                f"status of Upload {uuid} is not New, Submitted, Invalid, or Error"
+            )
 
     t_find_uuid = PythonOperator(
         task_id="find_uuid",
@@ -130,8 +130,8 @@ with HMDAG(
 
         ignore_globs = [uuid, "extras", "*metadata.tsv", "validation_report.txt"]
         app_context = {
-            "entities_url": HttpHook.get_connection("entity_api_connection").host + "/entities/",
-            "uuid_url": HttpHook.get_connection("uuid_api_connection").host + "/uuid/",
+            "entities_url": f"{HttpHook.get_connection('entity_api_connection').host}/entities/",
+            "uuid_url": f"{HttpHook.get_connection('uuid_api_connection').host}/uuid/",
             "ingest_url": os.environ["AIRFLOW_CONN_INGEST_API_CONNECTION"],
             "request_header": {"X-SenNet-Application": "ingest-pipeline"},
         }
@@ -143,8 +143,7 @@ with HMDAG(
             dataset_ignore_globs=ignore_globs,
             upload_ignore_globs="*",
             plugin_directory=plugin_path,
-            # offline=True,  # noqa E265
-            add_notes=False,
+            # offline_only=True,  # noqa E265
             extra_parameters={
                 "coreuse": get_threads_resource("validate_upload", "run_validation")
             },
@@ -158,7 +157,10 @@ with HMDAG(
         validation_file_path = Path(get_tmp_dir_path(kwargs["run_id"])) / "validation_report.txt"
         with open(validation_file_path, "w") as f:
             f.write(report.as_text())
-        kwargs["ti"].xcom_push(key="error_counts", value=report.counts)
+        kwargs["ti"].xcom_push(
+            key="report_data",
+            value={"error_counts": report.counts, "error_dict": report.errors},
+        )
         kwargs["ti"].xcom_push(key="validation_file_path", value=str(validation_file_path))
 
     t_run_validation = PythonOperator(
@@ -169,11 +171,9 @@ with HMDAG(
 
     def send_status_msg(**kwargs):
         validation_file_path = Path(kwargs["ti"].xcom_pull(key="validation_file_path"))
-        error_counts = kwargs["ti"].xcom_pull(key="error_counts")
-        error_counts_print = (
-            json.dumps(error_counts, indent=9).strip("{}").replace('"', "").replace(",", "")
-        )
-        error_counts_msg = "; ".join([f"{k}: {v}" for k, v in error_counts.items()])
+        report_data = kwargs["ti"].xcom_pull(key="report_data") or {}
+        error_counts = report_data.get("error_counts", {})
+        error_counts_print = "; ".join([f"{key}: {value}" for key, value in error_counts.items()])
         with open(validation_file_path) as f:
             report_txt = f.read()
         if report_txt.startswith("No errors!"):
@@ -184,7 +184,7 @@ with HMDAG(
         else:
             status = Statuses.UPLOAD_INVALID
             extra_fields = {
-                "validation_message": report_txt[-20000:],
+                "validation_message": report_txt,
             }
             if not error_counts:
                 logging.info("ERROR: status is invalid but error_counts not found.")
@@ -203,13 +203,15 @@ with HMDAG(
                 ------------
                 """
             )
+        messages = kwargs["ti"].xcom_pull(key="report_data") or {} | {
+            "run_id": kwargs.get("run_id")
+        }
         StatusChanger(
             kwargs["ti"].xcom_pull(key="uuid"),
             get_auth_tok(**kwargs),
             status=status,
             fields_to_overwrite=extra_fields,
-            run_id=kwargs.get("run_id"),
-            message=error_counts_msg,
+            messages=messages,
         ).update()
 
     t_send_status = PythonOperator(

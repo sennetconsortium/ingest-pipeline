@@ -422,6 +422,7 @@ with HMDAG(
             "dataset_uuid_callable": get_dataset_uuid,
             "ds_state": "Error",
             "message": f"An error occurred in salmon-rnaseq",
+            "pipeline_name": "salmon-rnaseq"
         },
         executor_config={"SlurmExecutor": {
             "output": "/home/codcc/airflow-logs/slurm/%x_%N_%j.out",
