@@ -68,10 +68,8 @@ with HMDAG(
     workflow_version = "1.0.0"
     workflow_description = "The CellDive pipeline performs segments nuclei and cells using Cytokit, and performs spatial analysis of expression data using SPRM, which computes various measures of analyte intensity per cell, performs clustering based on expression and other data, and computes markers for each cluster."
 
-
     def build_dataset_name(**kwargs):
         return inner_build_dataset_name(dag.dag_id, pipeline_name, **kwargs)
-
 
     @task(task_id="prepare_cwl_sprm")
     def prepare_cwl_sprm(**kwargs):
@@ -85,7 +83,7 @@ with HMDAG(
     prepare_cwl_sprm = prepare_cwl_sprm()
 
     def build_cwltool_cmd_sprm(**kwargs):
-        tmpdir = kwargs["dag_run"].conf.get("tmp_dir")
+        tmpdir = get_tmp_dir_path(kwargs["run_id"])
         print("tmpdir: ", tmpdir)
         parent_data_dir = get_parent_data_dir(**kwargs)
         print("parent_data_dir: ", parent_data_dir)
@@ -96,13 +94,17 @@ with HMDAG(
 
         input_parameters = [
             {"parameter_name": "--enable_manhole", "value": ""},
+            {
+                "parameter_name": "--threadpool_limit",
+                "value": get_threads_resource(dag.dag_id),
+            },
             {"parameter_name": "--options_preset", "value": "celldive"},
             {"parameter_name": "--image_dir", "value": str(data_dir / "pipeline_output/expr")},
-            {"parameter_name": "--processes", "value": get_threads_resource(dag.dag_id)},
             {"parameter_name": "--mask_dir", "value": str(data_dir / "pipeline_output/mask")},
+            {"parameter_name": "--min_memory", "value": ""},
         ]
 
-        command = get_cwl_cmd_from_workflows(workflows, 2, input_parameters, tmpdir, kwargs["ti"])
+        command = get_cwl_cmd_from_workflows(workflows, 1, input_parameters, tmpdir, kwargs["ti"])
 
         return join_quote_command_str(command)
 
@@ -115,7 +117,7 @@ with HMDAG(
     t_pipeline_exec_cwl_sprm = BashOperator(
         task_id="pipeline_exec_cwl_sprm",
         bash_command=""" \
-        tmp_dir={{dag_run.conf.tmp_dir}} ; \
+        tmp_dir={{tmp_dir_path(run_id)}} ; \
         {{ti.xcom_pull(task_ids='build_cmd_sprm')}} >> ${tmp_dir}/session.log 2>&1 ; \
         echo $?
         """,
@@ -137,7 +139,7 @@ with HMDAG(
     )
 
     def build_cwltool_cmd_create_vis_symlink_archive(**kwargs):
-        tmpdir = kwargs["dag_run"].conf.get("tmp_dir")
+        tmpdir = get_tmp_dir_path(kwargs["run_id"])
         print("tmpdir: ", tmpdir)
         parent_data_dir = get_parent_data_dir(**kwargs)
         print("parent_data_dir: ", parent_data_dir)
@@ -151,7 +153,7 @@ with HMDAG(
             {"parameter_name": "--sprm_output", "value": str(data_dir / "sprm_outputs")},
         ]
 
-        command = get_cwl_cmd_from_workflows(workflows, 3, input_parameters, tmpdir, kwargs["ti"])
+        command = get_cwl_cmd_from_workflows(workflows, 2, input_parameters, tmpdir, kwargs["ti"])
 
         return join_quote_command_str(command)
 
@@ -164,7 +166,7 @@ with HMDAG(
     t_pipeline_exec_cwl_create_vis_symlink_archive = BashOperator(
         task_id="pipeline_exec_cwl_create_vis_symlink_archive",
         bash_command=""" \
-        tmp_dir={{dag_run.conf.tmp_dir}} ; \
+        tmp_dir={{tmp_dir_path(run_id)}} ; \
         {{ti.xcom_pull(task_ids='build_cmd_create_vis_symlink_archive')}} >> ${tmp_dir}/session.log 2>&1 ; \
         echo $?
         """,
@@ -184,7 +186,7 @@ with HMDAG(
     prepare_cwl_ome_tiff_pyramid = EmptyOperator(task_id="prepare_cwl_ome_tiff_pyramid")
 
     def build_cwltool_cwl_ome_tiff_pyramid(**kwargs):
-        tmpdir = kwargs["dag_run"].conf.get("tmp_dir")
+        tmpdir = get_tmp_dir_path(kwargs["run_id"])
         print("tmpdir: ", tmpdir)
 
         # data directory is the stitched images, which are found in tmpdir
@@ -200,7 +202,7 @@ with HMDAG(
             {"parameter_name": "--ometiff_directory", "value": str(tmpdir / "cwl_out")},
         ]
 
-        command = get_cwl_cmd_from_workflows(workflows, 4, input_parameters, tmpdir, kwargs["ti"])
+        command = get_cwl_cmd_from_workflows(workflows, 3, input_parameters, tmpdir, kwargs["ti"])
         return join_quote_command_str(command)
 
     t_build_cmd_ome_tiff_pyramid = PythonOperator(
@@ -212,7 +214,7 @@ with HMDAG(
     t_pipeline_exec_cwl_ome_tiff_pyramid = BashOperator(
         task_id="pipeline_exec_cwl_ome_tiff_pyramid",
         bash_command=""" \
-        tmp_dir={{dag_run.conf.tmp_dir}} ; \
+        tmp_dir={{tmp_dir_path(run_id)}} ; \
         {{ti.xcom_pull(task_ids='build_cwl_ome_tiff_pyramid')}} >> $tmp_dir/session.log 2>&1 ; \
         echo $?
         """,
@@ -232,7 +234,7 @@ with HMDAG(
     prepare_cwl_ome_tiff_offsets = EmptyOperator(task_id="prepare_cwl_ome_tiff_offsets")
 
     def build_cwltool_cmd_ome_tiff_offsets(**kwargs):
-        tmpdir = kwargs["dag_run"].conf.get("tmp_dir")
+        tmpdir = get_tmp_dir_path(kwargs["run_id"])
         print("tmpdir: ", tmpdir)
         parent_data_dir = get_parent_data_dir(**kwargs)
         print("parent_data_dir: ", parent_data_dir)
@@ -247,7 +249,7 @@ with HMDAG(
             {"parameter_name": "--input_dir", "value": str(data_dir / "ometiff-pyramids")},
         ]
 
-        command = get_cwl_cmd_from_workflows(workflows, 5, input_parameters, tmpdir, kwargs["ti"])
+        command = get_cwl_cmd_from_workflows(workflows, 4, input_parameters, tmpdir, kwargs["ti"])
 
         return join_quote_command_str(command)
 
@@ -260,7 +262,7 @@ with HMDAG(
     t_pipeline_exec_cwl_ome_tiff_offsets = BashOperator(
         task_id="pipeline_exec_cwl_ome_tiff_offsets",
         bash_command=""" \
-        tmp_dir={{dag_run.conf.tmp_dir}} ; \
+        tmp_dir={{tmp_dir_path(run_id)}} ; \
         {{ti.xcom_pull(task_ids='build_cmd_ome_tiff_offsets')}} >> ${tmp_dir}/session.log 2>&1 ; \
         echo $?
         """,
@@ -280,7 +282,7 @@ with HMDAG(
     prepare_cwl_sprm_to_json = EmptyOperator(task_id="prepare_cwl_sprm_to_json")
 
     def build_cwltool_cmd_sprm_to_json(**kwargs):
-        tmpdir = kwargs["dag_run"].conf.get("tmp_dir")
+        tmpdir = get_tmp_dir_path(kwargs["run_id"])
         print("tmpdir: ", tmpdir)
         parent_data_dir = get_parent_data_dir(**kwargs)
         print("parent_data_dir: ", parent_data_dir)
@@ -295,7 +297,7 @@ with HMDAG(
             {"parameter_name": "--input_dir", "value": str(data_dir / "sprm_outputs")},
         ]
 
-        command = get_cwl_cmd_from_workflows(workflows, 6, input_parameters, tmpdir, kwargs["ti"])
+        command = get_cwl_cmd_from_workflows(workflows, 5, input_parameters, tmpdir, kwargs["ti"])
 
         return join_quote_command_str(command)
 
@@ -308,7 +310,7 @@ with HMDAG(
     t_pipeline_exec_cwl_sprm_to_json = BashOperator(
         task_id="pipeline_exec_cwl_sprm_to_json",
         bash_command=""" \
-        tmp_dir={{dag_run.conf.tmp_dir}} ; \
+        tmp_dir={{tmp_dir_path(run_id)}} ; \
         {{ti.xcom_pull(task_ids='build_cmd_sprm_to_json')}} >> ${tmp_dir}/session.log 2>&1 ; \
         echo $?
         """,
@@ -328,7 +330,7 @@ with HMDAG(
     prepare_cwl_sprm_to_anndata = EmptyOperator(task_id="prepare_cwl_sprm_to_anndata")
 
     def build_cwltool_cmd_sprm_to_anndata(**kwargs):
-        tmpdir = kwargs["dag_run"].conf.get("tmp_dir")
+        tmpdir = get_tmp_dir_path(kwargs["run_id"])
         print("tmpdir: ", tmpdir)
         parent_data_dir = get_parent_data_dir(**kwargs)
         print("parent_data_dir: ", parent_data_dir)
@@ -341,7 +343,7 @@ with HMDAG(
             {"parameter_name": "--input_dir", "value": str(data_dir / "sprm_outputs")},
         ]
 
-        command = get_cwl_cmd_from_workflows(workflows, 7, input_parameters, tmpdir, kwargs["ti"])
+        command = get_cwl_cmd_from_workflows(workflows, 6, input_parameters, tmpdir, kwargs["ti"])
 
         return join_quote_command_str(command)
 
@@ -354,7 +356,7 @@ with HMDAG(
     t_pipeline_exec_cwl_sprm_to_anndata = BashOperator(
         task_id="pipeline_exec_cwl_sprm_to_anndata",
         bash_command=""" \
-        tmp_dir={{dag_run.conf.tmp_dir}} ; \
+        tmp_dir={{tmp_dir_path(run_id)}} ; \
         {{ti.xcom_pull(task_ids='build_cmd_sprm_to_anndata')}} >> ${tmp_dir}/session.log 2>&1 ; \
         echo $?
         """,
@@ -421,7 +423,7 @@ with HMDAG(
     t_expand_symlinks = BashOperator(
         task_id="expand_symlinks",
         bash_command="""
-        tmp_dir={{dag_run.conf.tmp_dir}} ; \
+        tmp_dir={{tmp_dir_path(run_id)}} ; \
         ds_dir="{{ti.xcom_pull(task_ids='send_create_dataset')}}" ; \
         groupname="{{conf.as_dict()['connections']['OUTPUT_GROUP_NAME']}}" ; \
         cd "$ds_dir" ; \

@@ -11,7 +11,6 @@ from airflow import DAG
 from utils import (
     get_queue_resource,
     get_preserve_scratch_resource,
-    get_soft_data,
     get_tmp_dir_path,
     encrypt_tok,
     pythonop_build_dataset_lists,
