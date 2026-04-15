@@ -166,7 +166,7 @@ with HMDAG(
         python_callable=utils.pythonop_maybe_keep,
         provide_context=True,
         op_kwargs={
-            "next_op": "prepare_stellar_pre_convert",
+            "next_op": "trigger_sprm",
             "bail_op": "set_dataset_error",
             "test_op": "pipeline_exec_cwl_segmentation",
         },
@@ -181,7 +181,7 @@ with HMDAG(
             "dataset_uuid_callable": get_dataset_uuid,
             "ds_state": "Error",
             "message": "An error occurred in {}".format(pipeline_name),
-            "pipeline_name": pipeline_name
+            "pipeline_name": pipeline_name,
         },
         executor_config={"SlurmExecutor": {
             "output": "/home/codcc/airflow-logs/slurm/%x_%N_%j.out",
@@ -196,7 +196,7 @@ with HMDAG(
         collection_type = kwargs.get("collection_type", "")
         assay_type = kwargs.get("assay_type", "")
         payload = {
-            "tmp_dir": get_tmp_dir_path(kwargs["run_id"]),
+            "run_id": kwargs["run_id"],
             "parent_submission_id": kwargs["dag_run"].conf.get("parent_submission_id"),
             "parent_lz_path": kwargs["dag_run"].conf.get("parent_lz_path"),
             "previous_version_uuid": kwargs["dag_run"].conf.get("previous_version_uuid"),
