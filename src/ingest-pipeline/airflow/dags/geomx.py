@@ -1,4 +1,6 @@
 import os
+
+from os import fspath
 from pathlib import Path
 from datetime import datetime, timedelta
 
@@ -220,7 +222,7 @@ with HMDAG(
         )
 
         input_parameters = [
-            {"parameter_name": "--input_dir", "value": str(data_dir / "ometiff-pyramids/lab_processed/images/")},
+            {"parameter_name": "--input_dir", "value": fspath(data_dir / "ometiff-pyramids")},
         ]
         command = get_cwl_cmd_from_workflows(workflows, 2, input_parameters, tmpdir, kwargs["ti"])
         return join_quote_command_str(command)

@@ -41,8 +41,6 @@ from utils import (
 )
 
 from misc.tools.split_and_create import reorganize
-from misc.tools.set_standard_protections import process_one_uuid
-from misc.tools.survey import EntityFactory
 from status_change.status_manager import StatusChanger
 from misc.tools.scrub_fastqs import scrub_upload
 from extra_utils import SoftAssayClient
@@ -166,6 +164,7 @@ with HMDAG(
 
     def scrub_human_reads(**kwargs):
         lz_path = kwargs["ti"].xcom_pull(task_ids="find_uuid", key="lz_path")
+        num_threads = get_threads_resource("reorganize_upload", "scrub_human_reads")
         try:
             # just use lz_path from previous step
             metadata_files = list(Path(lz_path).glob("*metadata.tsv"))
@@ -174,7 +173,7 @@ with HMDAG(
             full_entity = SoftAssayClient(metadata_files, get_auth_tok(**kwargs))
             dataset_type = full_entity.primary_assay.get("dataset-type")
             if dataset_type in SCRUB_REQUIRED_ASSAY_TYPES:
-                scrub_upload(Path(lz_path))
+                scrub_upload(Path(lz_path), num_threads=num_threads)
             kwargs["ti"].xcom_push(key="scrub_human_reads", value="0")
         except Exception as e:
             print(f"Encountered {e}")
@@ -184,7 +183,6 @@ with HMDAG(
         task_id="scrub_human_reads",
         python_callable=scrub_human_reads,
         provide_context=True,
-        op_kwargs={},
     )
 
     t_maybe_keep_scrub = BranchPythonOperator(
