@@ -142,6 +142,8 @@ resource_map:
     'preserve_scratch': true
     'lanes': 2
     'tasks':
+      - 'task_re': 'scrub_human_reads'
+      - 'queue': 'COMPUTE'
       - 'task_re': '.*'
         'queue': 'general'
         'threads': 6
@@ -182,7 +184,7 @@ resource_map:
       - 'task_re': '.*'
         'queue': 'APPS'
         'threads': 6
-  - 'dag_re': '.xenium'
+  - 'dag_re': 'xenium'
     'preserve_scratch': true
     'lanes': 2
     'tasks':

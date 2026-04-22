@@ -34,6 +34,7 @@ from utils import (
     pythonop_set_dataset_state,
     find_matching_endpoint,
     HMDAG,
+    get_threads_resource,
     get_queue_resource,
     get_preserve_scratch_resource,
     get_soft_data_assaytype,
@@ -183,6 +184,11 @@ with HMDAG(
         task_id="scrub_human_reads",
         python_callable=scrub_human_reads,
         provide_context=True,
+        executor_config={"SlurmExecutor": {"output": "/home/codcc/airflow-logs/slurm/%x_%N_%j.out",
+                                          "cpus-per-task": str(get_threads_resource("reorganize_upload",
+                                                                                    "scrub_human_reads"))
+                                           }
+                         }
     )
 
     t_maybe_keep_scrub = BranchPythonOperator(
