@@ -244,8 +244,20 @@ with HMDAG(
             "mem": "2G"}},
     )
 
-    t_log_info = LogInfoOperator(task_id="log_info")
-    t_create_tmpdir = CreateTmpDirOperator(task_id="create_tmpdir")
+    t_log_info = LogInfoOperator(task_id="log_info",
+                                 executor_config={"SlurmExecutor": {
+                                     "output": "/home/codcc/airflow-logs/slurm/%x_%N_%j.out",
+                                     "nodelist": get_local_vm(
+                                         os.environ["AIRFLOW_CONN_AIRFLOW_CONNECTION"]),
+                                     "mem": "2G"}},
+                                 )
+    t_create_tmpdir = CreateTmpDirOperator(task_id="create_tmpdir",
+                                           executor_config={"SlurmExecutor": {
+                                               "output": "/home/codcc/airflow-logs/slurm/%x_%N_%j.out",
+                                               "nodelist": get_local_vm(
+                                                   os.environ["AIRFLOW_CONN_AIRFLOW_CONNECTION"]),
+                                               "mem": "2G"}},
+                                           )
 
     t_set_dataset_error = PythonOperator(
         task_id="set_dataset_error",
