@@ -143,9 +143,10 @@ resource_map:
     'lanes': 2
     'tasks':
       - 'task_re': 'scrub_human_reads'
-      - 'queue': 'COMPUTE'
+        'queue': 'COMPUTE'
+        'threads': 6
       - 'task_re': '.*'
-        'queue': 'general'
+        'queue': 'APPS'
         'threads': 6
   - 'dag_re': 'validate_dataset'
     'preserve_scratch': true

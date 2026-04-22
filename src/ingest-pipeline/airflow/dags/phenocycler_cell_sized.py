@@ -94,7 +94,7 @@ def generate_phenocycler_dag(params: SequencingDagParameters) -> DAG:
             ]
 
             command = get_cwl_cmd_from_workflows(
-                workflows, 2, input_parameters, tmpdir, kwargs["ti"]
+                workflows, 1, input_parameters, tmpdir, kwargs["ti"]
             )
 
             return join_quote_command_str(command)
@@ -145,7 +145,7 @@ def generate_phenocycler_dag(params: SequencingDagParameters) -> DAG:
             ]
 
             command = get_cwl_cmd_from_workflows(
-                workflows, 3, input_parameters, tmpdir, kwargs["ti"]
+                workflows, 2, input_parameters, tmpdir, kwargs["ti"]
             )
 
             return join_quote_command_str(command)
@@ -196,7 +196,7 @@ def generate_phenocycler_dag(params: SequencingDagParameters) -> DAG:
             ]
 
             command = get_cwl_cmd_from_workflows(
-                workflows, 4, input_parameters, tmpdir, kwargs["ti"]
+                workflows, 3, input_parameters, tmpdir, kwargs["ti"]
             )
 
             return join_quote_command_str(command)
@@ -246,7 +246,7 @@ def generate_phenocycler_dag(params: SequencingDagParameters) -> DAG:
             ]
 
             command = get_cwl_cmd_from_workflows(
-                workflows, 5, input_parameters, tmpdir, kwargs["ti"]
+                workflows, 4, input_parameters, tmpdir, kwargs["ti"]
             )
 
             return join_quote_command_str(command)
@@ -296,7 +296,7 @@ def generate_phenocycler_dag(params: SequencingDagParameters) -> DAG:
             ]
 
             command = get_cwl_cmd_from_workflows(
-                workflows, 6, input_parameters, tmpdir, kwargs["ti"]
+                workflows, 5, input_parameters, tmpdir, kwargs["ti"]
             )
 
             return join_quote_command_str(command)
@@ -346,7 +346,7 @@ def generate_phenocycler_dag(params: SequencingDagParameters) -> DAG:
             ]
 
             command = get_cwl_cmd_from_workflows(
-                workflows, 7, input_parameters, tmpdir, kwargs["ti"]
+                workflows, 6, input_parameters, tmpdir, kwargs["ti"]
             )
 
             return join_quote_command_str(command)
