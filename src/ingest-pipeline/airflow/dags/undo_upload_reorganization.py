@@ -1,3 +1,4 @@
+import os
 from datetime import datetime, timedelta
 import pandas as pd
 import shutil
@@ -17,7 +18,7 @@ from utils import (
     get_queue_resource,
     get_preserve_scratch_resource,
     _get_scratch_base_path,
-    encrypt_tok,
+    encrypt_tok, get_local_vm,
 )
 
 from misc.tools.survey import EntityFactory
@@ -34,6 +35,9 @@ default_args = {
     "retries": 1,
     "retry_delay": timedelta(minutes=1),
     "xcom_push": True,
+    "executor_config": {"SlurmExecutor": {"output": "/home/codcc/airflow-logs/slurm/%x_%N_%j.out",
+                                          "nodelist": get_local_vm(os.environ["AIRFLOW_CONN_AIRFLOW_CONNECTION"]),
+                                          "mem": "2G"}},
     "queue": get_queue_resource("undo_upload_reorganization"),
 }
 
