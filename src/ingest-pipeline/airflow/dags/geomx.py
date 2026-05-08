@@ -174,7 +174,7 @@ with HMDAG(
         input_parameters = [
             {"parameter_name": "--processes", "value": get_threads_resource(dag.dag_id,
                                                                             "build_cmd2")},
-            {"parameter_name": "--ometiff_directory", "value": str(data_dir)},
+            {"parameter_name": "--ometiff_directory", "value": fspath(tmpdir)},
         ]
         command = get_cwl_cmd_from_workflows(workflows, 1, input_parameters, tmpdir, kwargs["ti"])
         return join_quote_command_str(command)
