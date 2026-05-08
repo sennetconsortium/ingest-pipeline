@@ -12,7 +12,6 @@ from utils import format_multiline
 from .data_ingest_board_manager import DataIngestBoardManager
 from .email_manager import EmailManager
 from .slack_manager import SlackManager
-from .statistics_manager import StatisticsManager
 from .status_utils import (
     ENTITY_STATUS_MAP,
     EntityUpdateException,
