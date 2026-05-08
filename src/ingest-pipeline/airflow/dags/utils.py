@@ -25,6 +25,7 @@ from typing import (
     Tuple,
     TypeVar,
 )
+from urllib.parse import urlsplit
 
 import cwltool  # used to find its path
 import yaml
