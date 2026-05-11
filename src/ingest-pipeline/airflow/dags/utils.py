@@ -19,15 +19,11 @@ from textwrap import dedent
 from typing import (
     Any,
     Callable,
-    Dict,
     Iterable,
-    List,
     Mapping,
-    Optional,
     Pattern,
     Tuple,
     TypeVar,
-    Union,
 )
 from urllib.parse import urlsplit
 
@@ -35,23 +31,20 @@ import cwltool  # used to find its path
 import yaml
 from cryptography.fernet import Fernet
 from requests import codes
-from requests.exceptions import HTTPError
-from schema_utils import (
-    JSONType,
-)
+from requests.exceptions import HTTPError, JSONDecodeError
 from schema_utils import (
     localized_assert_json_matches_schema as assert_json_matches_schema,
 )
 
 from airflow import DAG
 from airflow.configuration import conf as airflow_conf
-from airflow.models.baseoperator import BaseOperator
+from airflow.models import Operator
 from airflow.providers.http.hooks.http import HttpHook
 from airflow.utils.email import send_email as airflow_send_email
 
 airflow_conf.read(join(environ["AIRFLOW_HOME"], "instance", "app.cfg"))
 try:
-    sys.path.append(airflow_conf.as_dict()["connections"]["SRC_PATH"].strip("'").strip('"'))
+    sys.path.append(str(airflow_conf.as_dict()["connections"]["SRC_PATH"]).strip("'").strip('"'))
     from misc.tools.survey import ENDPOINTS
 
     sys.path.pop()
@@ -59,10 +52,10 @@ except Exception:
     ENDPOINTS = {}
 
 
-# Some functions accept a `str` or `List[str]` and return that same type
-StrOrListStr = TypeVar("StrOrListStr", str, List[str])
+# Some functions accept a `str` or `list[str]` and return that same type
+StrOrListStr = TypeVar("StrOrListStr", str, list[str])
 
-PathStrOrList = Union[str, Path, Iterable[Union[str, Path]]]
+PathStrOrList = str | Path | Iterable[str | Path]
 
 # Some constants
 PIPELINE_BASE_DIR = Path(__file__).resolve().parent / "cwl"
@@ -106,21 +99,27 @@ FILE_TYPE_MATCHERS = [
     (r"(^.*\.yml$)|(^.*\.yaml$)", "yaml"),
     (r"^.*\.zip$", "zip"),
 ]
-COMPILED_TYPE_MATCHERS: Optional[List[Tuple[Pattern, str]]] = None
+COMPILED_TYPE_MATCHERS: list[Tuple[Pattern, str]] | None = None
 
 """
 Lazy construction: a list of tuples (collection_type_regex, assay_type_regex, workflow)
 """
 WORKFLOW_MAP_FILENAME = "workflow_map.yml"  # Expected to be found in this same dir
 WORKFLOW_MAP_SCHEMA = "workflow_map_schema.yml"
-COMPILED_WORKFLOW_MAP: Optional[List[Tuple[Pattern, Pattern, str]]] = None
+COMPILED_WORKFLOW_MAP: list[Tuple[Pattern, Pattern, str]] | None = None
 
 """
 Lazy construction; a list of tuples (dag_id_reges, task_id_regex, {key:value})
 """
 RESOURCE_MAP_FILENAME = "resource_map.yml"  # Expected to be found in this same dir
 RESOURCE_MAP_SCHEMA = "resource_map_schema.yml"
-COMPILED_RESOURCE_MAP: Optional[List[Tuple[Pattern, int, Dict[str, Any]]]] = None
+
+TaskList = list[tuple[Pattern, dict[str, Any]]]
+DagDct = dict[str, Any]
+
+COMPILED_RESOURCE_MAP: list[Tuple[Pattern, DagDct, TaskList]] | None = None
+
+DEFAULT_SLACK_TEST_CHANNEL = "C0A8ES4M9RU"  # test-notifications
 
 CURATION_CONTACTS = ["bhonick@psc.edu", "dbordelon@psc.edu", "egaskin@psc.edu"]
 CURATION_OFFICE_HOURS_SCHEDULING_LINK = "https://calendar.app.google/db2J6CDzZQuQnGHr6"
@@ -135,10 +134,10 @@ SequencingDagParameters = namedtuple(
 # TODO: rethink this, now that it's getting more and more unwieldy
 ManifestMatch = Tuple[
     bool,
-    Optional[str],
-    Optional[str],
-    Optional[bool],
-    Optional[bool],
+    str | None,
+    str | None,
+    bool | None,
+    bool | None,
 ]
 
 
@@ -155,7 +154,7 @@ class FileMatcher(ABC):
 
 class PipelineFileMatcher(FileMatcher):
     # (file/directory regex, description template, EDAM ontology term, is_qa_qc, is_data_product)
-    matchers: List[Tuple[Pattern, str, str, bool, bool]]
+    matchers: list[Tuple[Pattern, str, str, bool, bool]]
 
     def __init__(self):
         self.matchers = []
@@ -211,6 +210,7 @@ class DummyFileMatcher(FileMatcher):
     """
 
     def get_file_metadata(self, file_path: Path) -> ManifestMatch:
+        del file_path
         return True, "", "", False, False
 
 
@@ -230,7 +230,7 @@ class HMDAG(DAG):
             kwargs["max_active_runs"] = get_lanes_resource(dag_id)
         super().__init__(dag_id, **kwargs)
 
-    def add_task(self, task: BaseOperator):
+    def add_task(self, task: Operator):
         """
         Provide "queue".  This overwrites existing data on the fly
         unless the queue specified in the resource table is None.
@@ -250,7 +250,7 @@ class HMDAG(DAG):
         super().add_task(task)
 
 
-def find_pipeline_manifests(cwl_files: Union[List[Path], List[Dict], str]) -> List[Path]:
+def find_pipeline_manifests(cwl_files: list[Path] | list[dict] | str) -> list[Path]:
     """
     Constructs manifest paths from CWL files (strip '.cwl', append
     '-manifest.json'), and check whether each manifest exists. Return
@@ -271,13 +271,13 @@ def find_pipeline_manifests(cwl_files: Union[List[Path], List[Dict], str]) -> Li
 
 
 def get_cwl_cmd_from_workflows(
-    workflows: List[Dict],
+    workflows: list[dict],
     workflow_index: int,
-    input_param_vals: List,
+    input_param_vals: list,
     tmp_dir: Path,
     ti,
-    cwl_param_vals: Optional[List[Dict]] = None,
-) -> List:
+    cwl_param_vals: list[dict] | None = None,
+) -> list:
     """
     :param workflows: Iterable of workflow dictionaries
     :param workflow_index: index of workflow to build
@@ -330,7 +330,7 @@ def get_absolute_workflow(workflow: Path) -> Path:
     return PIPELINE_BASE_DIR / workflow
 
 
-def get_absolute_workflows(*workflows: Path) -> List[Path]:
+def get_absolute_workflows(*workflows: Path) -> list[Path]:
     """
     :param workflows: iterable of `Path`s to CWL files, absolute
       or relative
@@ -341,7 +341,7 @@ def get_absolute_workflows(*workflows: Path) -> List[Path]:
     return [get_absolute_workflow(workflow) for workflow in workflows]
 
 
-def get_named_absolute_workflows(**workflow_kwargs: Path) -> Dict[str, Path]:
+def get_named_absolute_workflows(**workflow_kwargs: Path) -> dict[str, Path]:
     # The type hint for **workflow_kwargs looks a little odd, but
     # apparently this is how you specify that all values are of that
     # type -- the keys of that dict are necessarily strings
@@ -360,12 +360,14 @@ def build_dataset_name(dag_id: str, pipeline_str: str, **kwargs) -> str:
     return f"{dag_id}__{parent_submission_str}__{pipeline_str}"
 
 
-def get_parent_dataset_uuids_list(**kwargs) -> List[str]:
-    uuid_list = kwargs["dag_run"].conf["parent_submission_id"]
+def get_parent_dataset_uuids_list(**kwargs) -> list[str]:
+    parent_uuid_list = kwargs["dag_run"].conf["parent_submission_id"]
+    azimuth_uuid_list = None
     if kwargs["dag"].dag_id == "azimuth_annotations":
-        uuid_list = pythonop_get_dataset_state(
-            dataset_uuid_callable=lambda **kwargs: uuid_list[0], **kwargs
+        azimuth_uuid_list = pythonop_get_dataset_state(
+            dataset_uuid_callable=lambda **_: parent_uuid_list[0], **kwargs
         ).get("parent_dataset_uuid_list")
+    uuid_list = azimuth_uuid_list if azimuth_uuid_list else parent_uuid_list
     if not isinstance(uuid_list, list):
         uuid_list = [uuid_list]
     return uuid_list
@@ -380,7 +382,7 @@ def get_parent_dataset_uuid(**kwargs) -> str:
 def get_dataset_type_organ_based(**kwargs) -> str:
     dataset_uuid = get_parent_dataset_uuid(**kwargs)
 
-    def my_callable(**kwargs):
+    def my_callable(**_):
         return dataset_uuid
 
     ds_rslt = pythonop_get_dataset_state(dataset_uuid_callable=my_callable, **kwargs)
@@ -397,13 +399,13 @@ def get_dataset_type_organ_based(**kwargs) -> str:
     return f"{ds_rslt['dataset_type']} [{pipeline_shorthand}]"
 
 
-def get_dataset_type_previous_version(**kwargs) -> List[str]:
+def get_dataset_type_previous_version(**kwargs) -> list[str]:
     dataset_uuid = get_previous_revision_uuid(**kwargs)
     if dataset_uuid is None:
         dataset_uuid = kwargs["dag_run"].conf.get("parent_submission_id", [None])[0]
     assert dataset_uuid is not None, "Missing previous_version_uuid"
 
-    def my_callable(**kwargs):
+    def my_callable(**_):
         return dataset_uuid
 
     ds_rslt = pythonop_get_dataset_state(dataset_uuid_callable=my_callable, **kwargs)
@@ -420,7 +422,7 @@ def get_dataname_previous_version(**kwargs) -> str:
         dataset_uuid = kwargs["dag_run"].conf.get("parent_submission_id", [None])[0]
     assert dataset_uuid is not None, "Missing previous_version_uuid"
 
-    def my_callable(**kwargs):
+    def my_callable(**_):
         return dataset_uuid
 
     ds_rslt = pythonop_get_dataset_state(dataset_uuid_callable=my_callable, **kwargs)
@@ -431,7 +433,7 @@ def get_dataname_previous_version(**kwargs) -> str:
     return ds_rslt["dataset_info"]
 
 
-def get_assay_previous_version(**kwargs) -> tuple:
+def get_assay_previous_version(**kwargs) -> tuple[str, str, str, int] | None:
     """Returns information based on previous run to indicate how the re-annotation should process:
     position 1: Assay indicator for pipeline decision
     position 2: Matrix file
@@ -458,7 +460,7 @@ def get_assay_previous_version(**kwargs) -> tuple:
         return "snareseq", "mudata_raw.h5mu", "secondary_analysis.h5mu", 1
 
 
-def get_parent_dataset_paths_list(**kwargs) -> List[Path]:
+def get_parent_dataset_paths_list(**kwargs) -> list[Path]:
     path_list = kwargs["dag_run"].conf["parent_lz_path"]
     if not isinstance(path_list, list):
         path_list = [path_list]
@@ -471,7 +473,7 @@ def get_parent_dataset_path(**kwargs) -> Path:
     return path_set.pop()
 
 
-def get_parent_data_dirs_list(**kwargs) -> List[Path]:
+def get_parent_data_dirs_list(**kwargs) -> list[Path]:
     """
     Build the absolute paths to the data, including the data_path offsets from
     the parent datasets' metadata
@@ -496,7 +498,7 @@ def get_parent_data_dir(**kwargs) -> Path:
     return path_set.pop()
 
 
-def get_previous_revision_uuid(**kwargs) -> Optional[str]:
+def get_previous_revision_uuid(**kwargs) -> str | None:
     return kwargs["dag_run"].conf.get("previous_version_uuid", None)
 
 
@@ -504,7 +506,7 @@ def get_dataset_uuid(**kwargs) -> str:
     return kwargs["ti"].xcom_pull(key="derived_dataset_uuid", task_ids="send_create_dataset")
 
 
-def get_uuid_for_error(**kwargs) -> Optional[str]:
+def get_uuid_for_error(**kwargs) -> str | None:
     """
     Return the uuid for the derived dataset if it exists, and of the parent dataset otherwise.
     """
@@ -523,12 +525,8 @@ def get_git_commits(file_list: StrOrListStr) -> StrOrListStr:
     Given a list of file paths, return a list of the current short commit hashes of those files
     """
     rslt = []
-    if isinstance(file_list, str):  # sadly, a str is an Iterable[str]
-        file_list = [file_list]
-        unroll = True
-    else:
-        unroll = False
-    for fname in file_list:
+    cleaned_file_list = file_list if isinstance(file_list, list) else [file_list]
+    for fname in cleaned_file_list:
         log_command = [piece.format(fname=fname) for piece in GIT_LOG_COMMAND]
         try:
             dirnm = dirname(fname)
@@ -541,10 +539,9 @@ def get_git_commits(file_list: StrOrListStr) -> StrOrListStr:
             line = line.encode("utf-8")
         hashval = line.split()[0].strip().decode("utf-8")
         rslt.append(hashval)
-    if unroll:
+    if isinstance(file_list, str):
         return rslt[0]
-    else:
-        return rslt
+    return rslt
 
 
 def _convert_git_to_proper_url(raw_url: str) -> str:
@@ -564,12 +561,8 @@ def get_git_origins(file_list: StrOrListStr) -> StrOrListStr:
     Given a list of file paths, return a list of the git origins of those files
     """
     rslt = []
-    if isinstance(file_list, str):  # sadly, a str is an Iterable[str]
-        file_list = [file_list]
-        unroll = True
-    else:
-        unroll = False
-    for fname in file_list:
+    cleaned_file_list = file_list if isinstance(file_list, list) else [file_list]
+    for fname in cleaned_file_list:
         command = [piece.format(fname=fname) for piece in GIT_ORIGIN_COMMAND]
         try:
             dirnm = dirname(fname)
@@ -583,13 +576,12 @@ def get_git_origins(file_list: StrOrListStr) -> StrOrListStr:
         url = line.split()[0].strip().decode("utf-8")
         url = _convert_git_to_proper_url(url)
         rslt.append(url)
-    if unroll:
+    if isinstance(file_list, str):
         return rslt[0]
-    else:
-        return rslt
+    return rslt
 
 
-def get_git_root_paths(file_list: Iterable[str]) -> Union[str, List[str]]:
+def get_git_root_paths(file_list: Iterable[str]) -> str | list[str]:
     """
     Given a list of file paths, return a list of the root directories of the git
     working trees of the files.
@@ -628,7 +620,7 @@ def get_git_provenance_dict(file_list: PathStrOrList) -> Mapping[str, str]:
     return {basename(fname): get_git_commits(realpath(fname)) for fname in file_list}
 
 
-def get_git_provenance_list(file_list: Iterable[str]) -> List[Mapping[str, Any]]:
+def get_git_provenance_list(file_list: Iterable[str]) -> list[Mapping[str, Any]]:
     """
     Given a list of file paths, return a list of dicts of the form:
 
@@ -651,7 +643,7 @@ def get_git_provenance_list(file_list: Iterable[str]) -> List[Mapping[str, Any]]
 
         root = get_git_root_paths(fname)
         dag_prov_entry = {
-            "name": relpath(fname, root),
+            "name": relpath(fname, root if type(root) is str else root[0]),
             "hash": get_git_commits(realpath(fname)),
             "origin": get_git_origins(realpath(fname)),
             "version": get_pipeline_version(realpath(fname)),
@@ -668,7 +660,7 @@ def get_git_provenance_list(file_list: Iterable[str]) -> List[Mapping[str, Any]]
     return result
 
 
-def get_pipeline_version(path: str) -> str:
+def get_pipeline_version(path: str | Path) -> str:
     """
     Given a cwl file path, return the pipeline version
     First try to get the GIT version tag
@@ -689,7 +681,7 @@ def get_pipeline_version(path: str) -> str:
 
     # If no tag found, check the cwl file
     if path.suffix != ".cwl":
-        return pipeline_version
+        return str(pipeline_version)
 
     if pipeline_version == "":
         with open(path, "r") as file:
@@ -699,7 +691,7 @@ def get_pipeline_version(path: str) -> str:
             if isinstance(docker_info, str):
                 _, pipeline_version = docker_info.split(":")
 
-    return pipeline_version
+    return str(pipeline_version)
 
 
 def _get_file_type(path: Path) -> str:
@@ -719,7 +711,7 @@ def _get_file_type(path: Path) -> str:
     return "unknown"
 
 
-def get_file_metadata(root_dir: str, matcher: FileMatcher) -> List[Mapping[str, Any]]:
+def get_file_metadata(root_dir: str, matcher: FileMatcher) -> list[Mapping[str, Any]]:
     """
     Given a root directory, return a list of the form:
 
@@ -775,7 +767,7 @@ def get_file_metadata(root_dir: str, matcher: FileMatcher) -> List[Mapping[str, 
 def get_file_metadata_dict(
     root_dir: str,
     alt_file_dir: str,
-    pipeline_file_manifests: List[Path],
+    pipeline_file_manifests: list[Path],
     max_in_line_files: int = MAX_IN_LINE_FILES,
 ) -> Mapping[str, Any]:
     """
@@ -875,6 +867,50 @@ def get_auth_tok(**kwargs) -> str:
     return auth_tok
 
 
+def make_httphook_request(
+    endpoint: str,
+    http_conn_id: str,
+    token: str | None,
+    method: str = "GET",
+    payload: dict | None = None,
+    headers: dict | None = None,
+) -> dict:
+    assert token or headers, "Must pass in either a token or header dict"
+    if not headers:
+        headers = {
+            "authorization": f"Bearer {token}",
+            "content-type": "application/json",
+            "X-SenNet-Application": "ingest-pipeline",
+        }
+    http_hook = HttpHook(method, http_conn_id=http_conn_id)
+    run_args = {"endpoint": endpoint, "headers": headers}
+    if method.lower() == "post":
+        run_args["data"] = json.dumps(payload)
+    try:
+        response = http_hook.run(**run_args)
+        response.raise_for_status()
+    except HTTPError as e:
+        print(f"ERROR: {e}")
+        if e.response.status_code == codes.unauthorized:
+            raise RuntimeError(f"authorization for {endpoint} was rejected?")
+        raise RuntimeError(f"misc error {e} on {endpoint}")
+    try:
+        response_json = response.json()
+        print(f"Response from '{method}' on {endpoint} ({http_conn_id}):")
+        if content_len := response.headers.get("Content-Length"):
+            if int(content_len) > 500000:  # length chosen arbitrarily, feel free to change
+                print(f"Response too long, not logging.")
+        else:
+            print(response_json)
+        return response_json
+    except JSONDecodeError as e:
+        if response.text:
+            print(
+                f"Received non-JSON response. Text: {response.text}; content: {response.content}"
+            )
+        raise
+
+
 def pythonop_send_create_dataset(**kwargs) -> str:
     """
     Requests creation of a new dataset.  Returns dataset info via XCOM
@@ -903,140 +939,104 @@ def pythonop_send_create_dataset(**kwargs) -> str:
     """
     from status_change.status_manager import call_message_managers
 
+    # check required values
     for arg in ["parent_dataset_uuid_callable", "http_conn_id"]:
         assert arg in kwargs, "missing required argument {}".format(arg)
     for arg_options in [["pipeline_shorthand", "dataset_type_callable"]]:
         assert any(arg in kwargs for arg in arg_options)
-
+    token = get_auth_tok(**kwargs)
     http_conn_id = kwargs["http_conn_id"]
-    # ctx = kwargs['dag_run'].conf
-    headers = {
-        "authorization": "Bearer " + get_auth_tok(**kwargs),
-        "content-type": "application/json",
-        "X-Hubmap-Application": "ingest-pipeline",
-    }
 
+    # get direct_ancestor_uuids
     source_uuids = kwargs["parent_dataset_uuid_callable"](**kwargs)
     if not isinstance(source_uuids, list):
         source_uuids = [source_uuids]
 
-    dataset_name = kwargs["dataset_name_callable"](**kwargs)
-    endpoint = f"entities/{source_uuids[0]}?exclude=direct_ancestors.files"
-
-    try:
-        previous_revision_path = None
-        response = HttpHook("GET", http_conn_id=http_conn_id).run(
-            endpoint=endpoint,
-            headers=headers,
-            extra_options={"check_response": False},
-        )
-        response.raise_for_status()
-        response_json = response.json()
-        if "group_uuid" not in response_json:
-            print(f"response from GET on entities{source_uuids[0]}:")
-            pprint(response_json)
-            raise ValueError("entities response did not contain group_uuid")
-
-        if "dataset_type" not in response_json:
-            print(f"response from GET on entities{source_uuids[0]}:")
-            pprint(response_json)
-            raise ValueError("entities response did not contain dataset_type")
-
-        parent_group_uuid = response_json["group_uuid"]
+    # get parent_dataset_type, parent_group_uuid
+    response_json = get_submission_context(token, source_uuids[0])
+    if not (parent_group_uuid := response_json.get("group_uuid")):
+        raise ValueError("entities response did not contain group_uuid")
+    if not (parent_dataset_type := response_json.get("dataset_type")):
         # Grab the dataset_type from the first_uuid
-        parent_dataset_type = response_json["dataset_type"]
+        raise ValueError("entities response did not contain dataset_type")
 
-        if "pipeline_shorthand" in kwargs:
-            dataset_type = f"{parent_dataset_type} [{kwargs['pipeline_shorthand']}]"
+    # get dataset_type
+    if pipeline_shorthand := kwargs.get("pipeline_shorthand"):
+        dataset_type = f"{parent_dataset_type} [{pipeline_shorthand}]"
+    else:
+        dataset_type = kwargs["dataset_type_callable"](**kwargs)
+
+    data = {
+        "direct_ancestor_uuids": source_uuids,
+        "dataset_info": kwargs["dataset_name_callable"](**kwargs),
+        "dataset_type": dataset_type,
+        "group_uuid": parent_group_uuid,
+        "contains_human_genetic_sequences": False,
+        "creation_action": kwargs.get("creation_action", "Central Process"),
+    }
+
+    # get previous_revision_path and previous_revision_uuid (if applicable)
+    previous_revision_path = None
+    if "previous_revision_uuid_callable" in kwargs:
+        previous_revision_uuid = kwargs["previous_revision_uuid_callable"](**kwargs)
+        if previous_revision_uuid is not None:
+            data["previous_revision_uuid"] = previous_revision_uuid
+            revision_uuid = previous_revision_uuid
         else:
-            dataset_type = kwargs["dataset_type_callable"](**kwargs)
-
-        creation_action = kwargs.get("creation_action", "Central Process")
-
-        data = {
-            "direct_ancestor_uuids": source_uuids,
-            "dataset_info": dataset_name,
-            "dataset_type": dataset_type,
-            "group_uuid": parent_group_uuid,
-            "contains_human_genetic_sequences": False,
-            "creation_action": creation_action,
-        }
-        if "previous_revision_uuid_callable" in kwargs:
-            previous_revision_uuid = kwargs["previous_revision_uuid_callable"](**kwargs)
-            if previous_revision_uuid is not None:
-                data["previous_revision_uuid"] = previous_revision_uuid
-                revision_uuid = previous_revision_uuid
-            else:
-                revision_uuid = (
-                    kwargs["dag_run"].conf["parent_submission_id"][0]
-                    if isinstance(kwargs["dag_run"].conf["parent_submission_id"], list)
-                    else kwargs["dag_run"].conf["parent_submission_id"]
-                )
-            response = HttpHook("GET", http_conn_id=http_conn_id).run(
-                endpoint=f"datasets/{revision_uuid}/file-system-abs-path",
-                headers=headers,
-                extra_options={"check_response": False},
+            revision_uuid = (
+                kwargs["dag_run"].conf["parent_submission_id"][0]
+                if isinstance(kwargs["dag_run"].conf["parent_submission_id"], list)
+                else kwargs["dag_run"].conf["parent_submission_id"]
             )
-            response.raise_for_status()
-            response_json = response.json()
-            if "path" not in response_json:
-                print(f"response from datasets/{revision_uuid}/file-system-abs-path:")
-                pprint(response_json)
-                raise ValueError(
-                    f"datasets/{revision_uuid}/file-system-abs-path did not return a path"
-                )
-            previous_revision_path = response_json["path"]
-
-        print("data for dataset creation:")
-        pprint(data)
-        response = HttpHook("POST", http_conn_id=http_conn_id).run(
-            endpoint="datasets", data=json.dumps(data), headers=headers, extra_options={}
+        response_json = make_httphook_request(
+            f"datasets/{revision_uuid}/file-system-abs-path", http_conn_id, token
         )
-        response.raise_for_status()
-        response_json = response.json()
-        print("response to dataset creation:")
-        pprint(response_json)
-        for elt in ["uuid", "group_uuid"]:
-            if elt not in response_json:
-                raise ValueError(f"datasets response did not contain {elt}")
-        uuid = response_json["uuid"]
-        group_uuid = response_json["group_uuid"]
+        if not (previous_revision_path := response_json.get("path")):
+            raise ValueError(
+                f"datasets/{revision_uuid}/file-system-abs-path did not return a path"
+            )
 
-        # Send confirmation message that derived dataset has been created
-        call_message_managers(
-            response_json.get("status"),
-            uuid,
-            get_auth_tok(**kwargs),
-            messages={"run_id": kwargs.get("run_id", ""), "parent_dataset_uuid": source_uuids[0]},
-            message_classes=["SlackManager"],
-        )
+    # create dataset
+    print("data for dataset creation:")
+    pprint(data)
+    print("creating dataset...")
+    response_json = make_httphook_request(
+        "datasets", http_conn_id, token, method="POST", payload=data
+    )
+    print("response from dataset creation...")
+    print(response_json)
 
-        response = HttpHook("GET", http_conn_id=http_conn_id).run(
-            endpoint=f"datasets/{uuid}/file-system-abs-path",
-            headers=headers,
-            extra_options={"check_response": False},
-        )
-        response.raise_for_status()
-        response_json = response.json()
-        if "path" not in response_json:
-            print(f"response from datasets/{uuid}/file-system-abs-path:")
-            pprint(response_json)
-            raise ValueError(f"datasets/{uuid}/file-system-abs-path" " did not return a path")
-        abs_path = response_json["path"]
+    for elt in ["uuid", "group_uuid"]:
+        if elt not in response_json:
+            raise ValueError(f"datasets response did not contain {elt}")
+    uuid = response_json["uuid"]
+    group_uuid = response_json["group_uuid"]
 
-    except HTTPError as e:
-        print(f"ERROR: {e}")
-        if e.response.status_code == codes.unauthorized:
-            raise RuntimeError(f"authorization for {endpoint} was rejected?")
-        raise RuntimeError(f"misc error {e} on {endpoint}")
+    # send confirmation message that derived dataset has been created
+    call_message_managers(
+        response_json["status"],
+        uuid,
+        get_auth_tok(**kwargs),
+        messages={"run_id": kwargs.get("run_id", ""), "parent_dataset_uuid": source_uuids[0]},
+        message_classes=["SlackManager"],
+    )
 
+    # get and return abs_path of new dataset
+    response_json = make_httphook_request(
+        f"datasets/{uuid}/file-system-abs-path", http_conn_id, token
+    )
+    if not (abs_path := response_json.get("path")):
+        raise ValueError(f"datasets/{uuid}/file-system-abs-path" " did not return a path")
+    
     # Added path prefix to avoid copying over moving for moonshot infrastructure
     dct = airflow_conf.as_dict(display_sensitive=True)["connections"]
     if "PATH_PREFIX" in dct:
         abs_path = dct["PATH_PREFIX"].strip("'") + abs_path
+    # push values to xcom
     kwargs["ti"].xcom_push(key="group_uuid", value=group_uuid)
     kwargs["ti"].xcom_push(key="derived_dataset_uuid", value=uuid)
     kwargs["ti"].xcom_push(key="previous_revision_path", value=previous_revision_path)
+
     return abs_path
 
 
@@ -1049,8 +1049,6 @@ def pythonop_set_dataset_state(**kwargs) -> None:
     Accepts the following via the caller's op_kwargs:
     'dataset_uuid_callable' : called with **kwargs; returns the
                               uuid of the dataset to be modified
-    'parent_dataset_uuid_callable' : called with **kwargs; returns the
-                              uuid of the parent dataset
     'http_conn_id' : the http connection to be used.  Default is "entity_api_connection"
     'ds_state' : one of 'QA', 'Processing', 'Error', 'Invalid'. Default: 'Processing'
     'message' : update message, saved as dataset metadata element "pipeline_message".
@@ -1064,7 +1062,7 @@ def pythonop_set_dataset_state(**kwargs) -> None:
     for arg in ["dataset_uuid_callable"]:
         assert arg in kwargs, "missing required argument {}".format(arg)
 
-    reindex = kwargs.get("reindex", True)
+    reindex = kwargs.get("reindex", 3)
     dataset_uuid = kwargs["dataset_uuid_callable"](**kwargs)
     run_id = (
         kwargs["run_id_callable"](**kwargs) if callable(kwargs.get("run_id_callable")) else None
@@ -1114,7 +1112,7 @@ def get_any_dataset_uuid(**kwargs) -> str | None:
         )
 
 
-def restructure_entity_metadata(raw_metadata: JSONType) -> JSONType:
+def restructure_entity_metadata(raw_metadata: dict) -> dict:
     """
     When a dataset is initially ingested, the associated metadata is parsed and
     associated with the database representation of the dataset.  The same metadata
@@ -1132,12 +1130,10 @@ def restructure_entity_metadata(raw_metadata: JSONType) -> JSONType:
         md["contributors"] = deepcopy(raw_metadata["contributors"])
     if "antibodies" in raw_metadata:
         md["antibodies"] = deepcopy(raw_metadata["antibodies"])
-    # print('reconstructed metadata follows')
-    # pprint(md)
     return md
 
 
-def pythonop_get_dataset_state(**kwargs) -> Dict:
+def pythonop_get_dataset_state(**kwargs) -> dict:
     """
     Gets the status JSON structure for a dataset.  Works for Uploads
     and Publications as well as Datasets.
@@ -1149,32 +1145,11 @@ def pythonop_get_dataset_state(**kwargs) -> Dict:
     for arg in ["dataset_uuid_callable"]:
         assert arg in kwargs, "missing required argument {}".format(arg)
     uuid = kwargs["dataset_uuid_callable"](**kwargs)
-    method = "GET"
     auth_tok = get_auth_tok(**kwargs)
-    headers = {
-        "authorization": f"Bearer {auth_tok}",
-        "content-type": "application/json",
-        "Cache-Control": "no-cache",
-        "X-SenNet-Application": "ingest-pipeline",
-    }
-    http_hook = HttpHook(method, http_conn_id="entity_api_connection")
-
-    endpoint = f"entities/{uuid}?exclude=direct_ancestors.files"
 
     try:
-        response = http_hook.run(
-            endpoint, headers=headers, extra_options={"check_response": False}
-        )
-        response.raise_for_status()
-        ds_rslt = response.json()
-        print("ds rslt:")
-        # pprint(ds_rslt) temporarily removed due to increasing complexity in the json
-        print(ds_rslt)
-    except HTTPError as e:
-        print(f"ERROR: {e}")
-        if e.response.status_code == codes.unauthorized:
-            raise RuntimeError("entity database authorization was rejected?")
-        print("benign error")
+        ds_rslt = get_submission_context(auth_tok, uuid)
+    except Exception:
         return {}
 
     for key in ["status", "uuid", "entity_type"]:
@@ -1199,19 +1174,8 @@ def pythonop_get_dataset_state(**kwargs) -> Dict:
     else:
         raise RuntimeError(f"Unknown entity_type {ds_rslt['entity_type']}")
     try:
-        http_hook = HttpHook(method, http_conn_id="ingest_api_connection")
-        response = http_hook.run(
-            endpoint, headers=headers, extra_options={"check_response": False}
-        )
-        response.raise_for_status()
-        path_query_rslt = response.json()
-        print("path_query rslt:")
-        pprint(path_query_rslt)
-    except HTTPError as e:
-        print(f"ERROR: {e}")
-        if e.response.status_code == codes.unauthorized:
-            raise RuntimeError("entity database authorization was rejected?")
-        print("benign error")
+        path_query_rslt = make_httphook_request(endpoint, "ingest_api_connection", auth_tok)
+    except Exception:
         return {}
     assert "path" in path_query_rslt, f"Dataset path for {uuid} produced" " no path"
     full_path = path_query_rslt["path"]
@@ -1244,42 +1208,15 @@ def pythonop_get_dataset_state(**kwargs) -> Dict:
 
         rslt["source_type"] = source
 
-        http_hook = HttpHook("GET", http_conn_id="entity_api_connection")
-        endpoint = f"datasets/{ds_rslt['uuid']}/organs"
         try:
-            response = http_hook.run(
-                endpoint, headers=headers, extra_options={"check_response": False}
+            organs_query_rslt = make_httphook_request(
+                f"datasets/{ds_rslt['uuid']}/organs", "entity_api_connection", auth_tok
             )
-            response.raise_for_status()
-            organs_query_rslt = response.json()
-            print("organs_query_rslt:")
-            pprint(organs_query_rslt)
             rslt["organs"] = [entry["organ"] for entry in organs_query_rslt]
-        except HTTPError as e:
-            print(f"ERROR: {e}")
-            if e.response.status_code == codes.unauthorized:
-                raise RuntimeError("entity database authorization was rejected?")
-            print("benign error")
+        except Exception:
             return {}
 
     return rslt
-
-
-def _uuid_lookup(uuid, **kwargs):
-    http_conn_id = "uuid_api_connection"
-    endpoint = "hmuuid/{}".format(uuid)
-    method = "GET"
-    headers = {"authorization": "Bearer " + get_auth_tok(**kwargs)}
-    #     print('headers:')
-    #     pprint(headers)
-    extra_options = {}
-
-    http_hook = HttpHook(method, http_conn_id=http_conn_id)
-
-    response = http_hook.run(endpoint, None, headers, extra_options)
-    #     print('response: ')
-    #     pprint(response.json())
-    return response.json()
 
 
 def _generate_slices(id_to_slice: str) -> Iterable[str]:
@@ -1308,7 +1245,7 @@ def pythonop_build_dataset_lists(**kwargs) -> None:
 
     for uuid in kwargs["dag_run"].conf["uuids"]:
         soft_data = get_soft_data(uuid, **kwargs)
-        ds_rslt = pythonop_get_dataset_state(dataset_uuid_callable=lambda **kwargs: uuid, **kwargs)
+        ds_rslt = pythonop_get_dataset_state(dataset_uuid_callable=lambda **_: uuid, **kwargs)
 
         # If we got nothing back from soft_data, then let's try to determine using entity_api
         if soft_data:
@@ -1341,7 +1278,9 @@ def assert_id_known(id_to_check: str, **kwargs) -> None:
     Raises AssertionError if the ID is not known.
     """
     for slice in _generate_slices(id_to_check):
-        tissue_info = _uuid_lookup(slice, **kwargs)
+        tissue_info = make_httphook_request(
+            f"hmuuid/{slice}", "uuid_api_connection", get_auth_tok(**kwargs)
+        )
         assert tissue_info and len(tissue_info) >= 1, f"tissue_id {slice} not found on lookup"
 
 
@@ -1441,7 +1380,9 @@ def _get_scratch_base_path() -> Path:
         scratch_path = dct["workflow_scratch"]
     else:
         raise KeyError("WORKFLOW_SCRATCH")  # preserve original code behavior
-    scratch_path = scratch_path.strip("'").strip('"')  # remove quotes that may be on the string
+    scratch_path = (
+        str(scratch_path).strip("'").strip('"')
+    )  # remove quotes that may be on the string
     return Path(scratch_path)
 
 
@@ -1468,7 +1409,7 @@ def get_cwltool_bin_path() -> Path:
     return cwltool_dir
 
 
-def get_cwltool_base_cmd(tmpdir: Path) -> List[str]:
+def get_cwltool_base_cmd(tmpdir: Path) -> list[str | Path]:
     return [
         "env",
         "TMPDIR={}".format(tmpdir),
@@ -1490,15 +1431,15 @@ def get_cwltool_base_cmd(tmpdir: Path) -> List[str]:
     ]
 
 
-def build_provenance_function(cwl_workflows: Callable[..., List[Dict]]) -> Callable[..., List]:
-    def build_provenance(**kwargs) -> List:
+def build_provenance_function(cwl_workflows: Callable[..., list[dict]]) -> Callable[..., list]:
+    def build_provenance(**kwargs) -> list:
         # Get the previous revisions metadata
         dataset_uuid = get_previous_revision_uuid(**kwargs)
         if dataset_uuid is None:
             dataset_uuid = kwargs["dag_run"].conf.get("parent_submission_id", [None])[0]
         assert dataset_uuid is not None, "Missing previous_version_uuid"
         ds_rslt = pythonop_get_dataset_state(
-            dataset_uuid_callable=lambda **kwargs: dataset_uuid, **kwargs
+            dataset_uuid_callable=lambda **_: dataset_uuid, **kwargs
         )
 
         # Generate a new dag provenance
@@ -1508,7 +1449,7 @@ def build_provenance_function(cwl_workflows: Callable[..., List[Dict]]) -> Calla
             else []
         )
 
-        new_dag_provenance.extend(get_git_provenance_list([*cwl_workflows(**kwargs)]))
+        new_dag_provenance.extend(get_git_provenance_list(*cwl_workflows(**kwargs)))
 
         # Look through the previous revision for the pipeline invocations
         for data in ds_rslt["ingest_metadata"]["dag_provenance_list"]:
@@ -1522,17 +1463,17 @@ def build_provenance_function(cwl_workflows: Callable[..., List[Dict]]) -> Calla
 
 def make_send_status_msg_function(
     dag_file: str,
-    retcode_ops: List[str],
-    cwl_workflows: Union[List[Path], Callable[..., List[Dict]]],
+    retcode_ops: list[str],
+    cwl_workflows: list[Path] | Callable[..., list[dict]],
     uuid_src_task_id: str = "send_create_dataset",
-    dataset_uuid_fun: Optional[Callable[..., str]] = None,
-    dataset_lz_path_fun: Optional[Callable[..., str]] = None,
-    metadata_fun: Optional[Callable[..., dict]] = None,
-    include_file_metadata: Optional[bool] = True,
-    no_provenance: Optional[bool] = False,
-    workflow_description: Optional[str] = None,
-    workflow_version: Optional[str] = None,
-    reindex: bool = True,
+    dataset_uuid_fun: Callable[..., str] | None = None,
+    dataset_lz_path_fun: Callable[..., str] | None = None,
+    metadata_fun: Callable[..., dict] | None = None,
+    include_file_metadata: bool | None = True,
+    no_provenance: bool | None = False,
+    workflow_description: str | None = None,
+    workflow_version: str | None = None,
+    reindex: int = 3,
 ) -> Callable[..., bool]:
     """
     The function which is generated by this function will return a boolean,
@@ -1617,7 +1558,7 @@ def make_send_status_msg_function(
         inner_cwl_workflows = cwl_workflows(**kwargs) if callable(cwl_workflows) else cwl_workflows
 
         ds_rslt = pythonop_get_dataset_state(
-            dataset_uuid_callable=lambda **kwargs: dataset_uuid, **kwargs
+            dataset_uuid_callable=lambda **_: dataset_uuid, **kwargs
         )
         if success:
 
@@ -1653,26 +1594,12 @@ def make_send_status_msg_function(
             if metadata_fun:
                 md["metadata"] = metadata_fun(**kwargs)
 
-            # thumbnail_file_abs_path = []
-            # if dataset_lz_path_fun:
-            #     dataset_dir_abs_path = dataset_lz_path_fun(**kwargs)
-            #     if dataset_dir_abs_path:
-            #         #########################################################################
-            #         # Added by Zhou 6/16/2021 for registering thumbnail image
-            #         # This is the only place that uses this hardcoded extras/thumbnail.jpg
-            #         thumbnail_file_abs_path = join(dataset_dir_abs_path, "extras/thumbnail.jpg")
-            #         if exists(thumbnail_file_abs_path):
-            #             thumbnail_file_abs_path = thumbnail_file_abs_path
-            #         else:
-            #             thumbnail_file_abs_path = []
-            #         #########################################################################
-
             manifest_files = find_pipeline_manifests(inner_cwl_workflows)
             if include_file_metadata and ds_dir is not None and not ds_dir == "":
                 md.update(
                     get_file_metadata_dict(
                         ds_dir,
-                        get_tmp_dir_path(kwargs["run_id"]),
+                        str(get_tmp_dir_path(kwargs["run_id"])),
                         manifest_files,
                     ),
                 )
@@ -1796,7 +1723,9 @@ def map_queue_name(raw_queue_name: str) -> str:
     conf_dict = airflow_conf.as_dict()
     if "QUEUE_NAME_TEMPLATE" in conf_dict.get("connections", {}):
         template = conf_dict["connections"]["QUEUE_NAME_TEMPLATE"]
-        template = template.strip("'").strip('"')  # remove quotes that may be on the config string
+        template = (
+            str(template).strip("'").strip('"')
+        )  # remove quotes that may be on the config string
         rslt = template.format(raw_queue_name)
         return rslt
     else:
@@ -1805,12 +1734,9 @@ def map_queue_name(raw_queue_name: str) -> str:
 
 def create_dataset_state_error_callback(
     dataset_uuid_callable: Callable[[Any], str],
-) -> Callable[[Mapping, Any], None]:
+) -> Callable[[Mapping], None]:
     # TODO: this should be deprecated in favor of status_change.callbacks.FailureCallback
     def set_dataset_state_error(context_dict: Mapping, **kwargs) -> None:
-        """
-        This routine is meant to be
-        """
         if (dag_run := kwargs.get("dag_run")) and dag_run.conf.get("dryrun"):
             return None
         msg = "An internal error occurred in the {} workflow step {}".format(
@@ -1831,7 +1757,7 @@ def create_dataset_state_error_callback(
     return set_dataset_state_error
 
 
-def _get_workflow_map() -> List[Tuple[Pattern, Pattern, str]]:
+def _get_workflow_map() -> list[Tuple[Pattern, Pattern, str]]:
     """
     Lazy compilation of workflow map
     """
@@ -1850,7 +1776,7 @@ def _get_workflow_map() -> List[Tuple[Pattern, Pattern, str]]:
     return COMPILED_WORKFLOW_MAP
 
 
-def _get_resource_map() -> List[Tuple[Pattern, Pattern, Dict[str, str]]]:
+def _get_resource_map() -> list[Tuple[Pattern, DagDct, TaskList]]:
     """
     Lazy compilation of resource map
     """
@@ -1858,10 +1784,10 @@ def _get_resource_map() -> List[Tuple[Pattern, Pattern, Dict[str, str]]]:
     if COMPILED_RESOURCE_MAP is None:
         map_path = join(dirname(__file__), RESOURCE_MAP_FILENAME)
         with open(map_path, "r") as f:
-            map = yaml.safe_load(f)
-        assert_json_matches_schema(map, RESOURCE_MAP_SCHEMA)
+            resource_map = yaml.safe_load(f)
+        assert_json_matches_schema(resource_map, RESOURCE_MAP_SCHEMA)
         cmp_map = []
-        for dct in map["resource_map"]:
+        for dct in resource_map["resource_map"]:
             dag_re = re.compile(dct["dag_re"])
             dag_dct = {key: dct[key] for key in dct if key not in ["dag_re", "tasks"]}
             tasks = []
@@ -1871,11 +1797,11 @@ def _get_resource_map() -> List[Tuple[Pattern, Pattern, Dict[str, str]]]:
                 task_dct = {key: inner_dct[key] for key in inner_dct if key not in ["task_re"]}
                 tasks.append((task_re, task_dct))
             cmp_map.append((dag_re, dag_dct, tasks))
-        COMPILED_RESOURCE_MAP = cmp_map
+        return cmp_map
     return COMPILED_RESOURCE_MAP
 
 
-def _lookup_resource_record(dag_id: str, task_id: Optional[str] = None) -> Tuple[int, Dict]:
+def _lookup_resource_record(dag_id: str, task_id: str | None = None) -> dict[str, Any]:
     """
     Look up the resource map entry for the given dag_id and task_id. The first
     match is returned.  If the task_id is None, the first record matching only
@@ -1899,7 +1825,7 @@ def _lookup_resource_record(dag_id: str, task_id: Optional[str] = None) -> Tuple
     raise ValueError("No resource map entry found for" f" dag_id <{dag_id}> task_id <{task_id}>")
 
 
-def get_queue_resource(dag_id: str, task_id: Optional[str] = None) -> str:
+def get_queue_resource(dag_id: str, task_id: str | None = None) -> str:
     """
     Look up the queue defined for this dag_id and task_id in the current
     resource map.  If the task_id is None, the lookup is done with
@@ -1936,7 +1862,7 @@ def get_preserve_scratch_resource(dag_id: str) -> bool:
     return bool(rec["preserve_scratch"])
 
 
-def get_threads_resource(dag_id: str, task_id: Optional[str] = None) -> int:
+def get_threads_resource(dag_id: str, task_id: str | None = None) -> int:
     """
     Look up the number of threads defined for this dag_id and task_id in
     the current resource map.  If the task_id is None, the lookup is done
@@ -1949,14 +1875,13 @@ def get_threads_resource(dag_id: str, task_id: Optional[str] = None) -> int:
     assert any(
         ["threads" in rec, "coreuse" in rec]
     ), 'schema should guarantee "threads" or "coreuse" is present?'
-    if rec.get("coreuse"):
-        return (
-            math.ceil(os.cpu_count() * (int(rec.get("coreuse")) / 100))
-            if int(rec.get("coreuse")) > 0
-            else math.ceil(os.cpu_count() / 4)
-        )
+    if (coreuse := rec.get("coreuse")) and (cpu_count := os.cpu_count()):
+        if type(coreuse) is int and coreuse > 0:
+            return math.ceil(cpu_count * (coreuse // 100))
+        else:
+            return math.ceil(cpu_count / 4)
     else:
-        return int(rec.get("threads"))
+        return int(rec["threads"])
 
 
 def downstream_workflow_iter(collectiontype: str, assay_type: StrOrListStr) -> Iterable[str]:
@@ -1978,17 +1903,17 @@ def downstream_workflow_iter(collectiontype: str, assay_type: StrOrListStr) -> I
 
 def encrypt_tok(cleartext_tok: str) -> bytes:
     key = airflow_conf.as_dict(display_sensitive=True)["core"]["fernet_key"]
-    fernet = Fernet(key.encode())
+    fernet = Fernet(str(key).encode())
     return fernet.encrypt(cleartext_tok.encode())
 
 
 def decrypt_tok(crypt_tok: bytes) -> str:
     key = airflow_conf.as_dict(display_sensitive=True)["core"]["fernet_key"]
-    fernet = Fernet(key.encode())
+    fernet = Fernet(str(key).encode())
     return fernet.decrypt(crypt_tok).decode()
 
 
-def join_quote_command_str(pieces: List[Any]):
+def join_quote_command_str(pieces: list[Any]):
     command_str = " ".join(shlex.quote(str(piece)) for piece in pieces)
     print("final command_str:", command_str)
     return command_str
@@ -2017,30 +1942,14 @@ def find_matching_endpoint(host_url: str) -> str:
     return candidates[0]
 
 
-def get_soft_data(dataset_uuid, **kwargs) -> Optional[dict]:
+def get_soft_data(dataset_uuid, **kwargs) -> dict:
     """
     Gets the soft data type for a specific uuid.
     """
-    endpoint = f"/assaytype/{dataset_uuid}"
-    http_hook = HttpHook("GET", http_conn_id="ingest_api_connection")
-    headers = {
-        "authorization": "Bearer " + get_auth_tok(**kwargs),
-        "content-type": "application/json",
-        "X-SenNet-Application": "ingest-pipeline",
-    }
-    try:
-        response = http_hook.run(endpoint, headers=headers)
-        response.raise_for_status()
-        response = response.json()
-        print(f"rule_set response for {dataset_uuid} follows")
-        pprint(response)
-    except HTTPError as e:
-        print(f"ERROR: {e} fetching full path for {dataset_uuid}")
-        if e.response.status_code == codes.unauthorized:
-            raise RuntimeError("ingest_api_connection authorization was rejected?")
-        print("benign error")
-        return None
-    return response
+    print("Fetching rule_set response...")
+    return make_httphook_request(
+        f"assaytype/{dataset_uuid}", "ingest_api_connection", get_auth_tok(**kwargs)
+    )
 
 
 def get_soft_data_assaytype(dataset_uuid, **kwargs) -> str:
@@ -2059,52 +1968,153 @@ def gather_calculated_metadata(**kwargs):
 
 
 def post_to_slack_notify(token: str, message: str, channel: str):
-    http_hook = HttpHook("POST", http_conn_id="ingest_api_connection")
-    payload = json.dumps({"message": message, "channel": channel})
-    headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
-    response = http_hook.run("/notify", payload, headers)
-    response.raise_for_status()
+    payload = {"message": message, "channel": channel}
+    return make_httphook_request(
+        "notify", "ingest_api_connection", token, method="POST", payload=payload
+    )
+
+
+def get_env() -> str:
+    """
+    Return lowercase env str ("prod", "dev")
+    or default to empty string.
+    """
+    env = ""
+    for conn in ["ingest_api_connection", "entity_api_connection"]:
+        if host := HttpHook.get_connection(conn).host:
+            try:
+                env = find_matching_endpoint(host)
+                break
+            except Exception:
+                continue
+    return env.lower()
 
 
 def env_appropriate_slack_channel(prod_channel: str) -> str:
-    default = "C0A8ES4M9RU"  # test-notifications
-    entity_host = HttpHook.get_connection("entity_api_connection").host or ""
-    try:
-        env = find_matching_endpoint(entity_host) or ""
-    except AssertionError:
-        env = "dev"
-    if env.lower() == "prod":
+    env = get_env()
+    if prod_channel and env == "prod":
         return prod_channel
-    return default
+    logging.info(
+        f"Switching channel from {prod_channel} to {DEFAULT_SLACK_TEST_CHANNEL}. Env: {env}."
+    )
+    return DEFAULT_SLACK_TEST_CHANNEL
 
 
-# This is simplified from pythonop_get_dataset_state in utils
 def get_submission_context(token: str, uuid: str, headers: dict | None = None) -> dict[str, Any]:
     """
+    Get info about an entity as returned by entity-api.
     uuid can also be a HuBMAP/SenNet ID.
     """
-    if not headers:
-        headers = {
-            "authorization": f"Bearer {token}",
-            "content-type": "application/json",
-            f"X-Hubmap-Application": "ingest-pipeline",
-        }
-    http_hook = HttpHook("GET", http_conn_id="entity_api_connection")
+    return make_httphook_request(
+        f"entities/{uuid}?exclude=direct_ancestors.files",
+        "entity_api_connection",
+        token,
+        headers=headers,
+    )
 
-    endpoint = f"entities/{uuid}?exclude=direct_ancestors.files"
 
-    try:
-        response = http_hook.run(
-            endpoint, headers=headers, extra_options={"check_response": False}
-        )
-        response.raise_for_status()
-        return response.json()
-    except HTTPError as e:
-        print(f"ERROR: {e}")
-        if e.response.status_code == codes.unauthorized:
-            raise RuntimeError("entity database authorization was rejected?")
-        print("benign error")
-        return {}
+def get_config_value_int_recipients() -> list[str]:
+    """
+    Allows setting default internal email recipients at the config level;
+    overrides values passed into send_email if prod_only=True
+    """
+    conf_dict = airflow_conf.as_dict()
+    if int_recipients := conf_dict.get("email_notifications", {}).get("int_recipients"):
+        return [str(address) for address in [int_recipients]]
+    return []
+
+
+def get_config_value_ext_recipients() -> list[str]:
+    """
+    Allows setting default external email recipients at the config level;
+    overrides values passed into send_email if prod_only=True
+    """
+    conf_dict = airflow_conf.as_dict()
+    if main_recipient := conf_dict.get("email_notifications", {}).get("main"):
+        return [str(main_recipient)]
+    return []
+
+
+def send_email(
+    contacts: list[str] | str,
+    subject: str,
+    email_body: str,
+    attachment_path: str | None = None,
+    cc: list[str] = [],
+    bcc: list[str] = [],
+    prod_only: bool = True,
+) -> bool:
+    assert contacts and email_body
+    if type(contacts) is str:
+        contacts = [contacts]
+    contacts = list(set(contacts))
+    preview = format_multiline(
+        f"""
+            Contact: {", ".join(contacts)}
+            cc: {", ".join(cc) if cc else "None"}
+            bcc: {", ".join(bcc) if bcc else "None"}
+            Subject: {subject}
+            Message: {email_body}
+            {("Attachment path: " + attachment_path) if attachment_path else "None"}
+            """
+    )
+    if prod_only and (get_env() != "prod"):
+        return send_email_with_config_recipients(subject, email_body, attachment_path, preview)
+    if cc:
+        # If a contact is in both lists, remove them from cc
+        cc = list(set(cc) - set(contacts))
+    logging.info(preview)
+    airflow_send_email(
+        contacts,
+        subject,
+        email_body,
+        files=[attachment_path] if attachment_path else None,
+        cc=cc,
+        bcc=bcc,
+    )
+    return True
+
+
+def send_email_with_config_recipients(
+    subject: str, email_body: str, attachment_path: str | None, preview: str | None
+) -> bool:
+    """
+    Bypass send_email and use config values only.
+    """
+    logging.info("Fetching email contact overrides from config.")
+    conf_dict = airflow_conf.as_dict()
+    # fetch any internal recipient overrides
+    if int_recipients := conf_dict.get("email_notifications", {}).get("int_recipients", ""):
+
+        int_recipients = str(int_recipients).split(",")
+        logging.info(f"Overriding internal recipients with config value: {int_recipients}")
+    # fetch any main recipient overrides
+    if contacts := conf_dict.get("email_notifications", {}).get("main", ""):
+        contacts = str(contacts).split(",")
+        logging.info(f"Overriding main recipients with config value: {contacts}")
+    # send nothing and return False if no config contacts found
+    if not contacts and not int_recipients:
+        logging.info("No contacts found in airflow_conf, not sending.")
+        if preview:
+            logging.info("Would have sent:")
+            logging.info(preview)
+        return False
+    logging.info(f"Sending email to config contact(s) {[*contacts, *int_recipients]}.")
+    if preview:
+        logging.info("Preview of real data below:")
+        logging.info(preview)
+    airflow_send_email(
+        contacts if contacts else int_recipients,
+        subject,
+        email_body,
+        files=[attachment_path] if attachment_path else None,
+        cc=int_recipients,
+    )
+    return True
+
+
+def format_multiline(string: str) -> str:
+    return dedent(string.strip())
 
 
 def main():
@@ -2156,86 +2166,6 @@ def main():
     crypt_s = encrypt_tok(s)
     s2 = decrypt_tok(crypt_s)
     print("crypto test: {} -> {} -> {}".format(s, crypt_s, s2))
-
-
-def get_config_value_int_recipients() -> list[str]:
-    """
-    Allows setting default internal email recipients at the config level;
-    overrides values passed into send_email if prod_only=True
-    """
-    conf_dict = airflow_conf.as_dict()
-    if int_recipients := conf_dict.get("email_notifications", {}).get("int_recipients"):
-        return [str(address) for address in [int_recipients]]
-    return []
-
-
-def get_config_value_ext_recipients() -> list[str]:
-    """
-    Allows setting default external email recipients at the config level;
-    overrides values passed into send_email if prod_only=True
-    """
-    conf_dict = airflow_conf.as_dict()
-    if main_recipient := conf_dict.get("email_notifications", {}).get("main"):
-        return [str(main_recipient)]
-    return []
-
-
-def send_email(
-    contacts: list[str],
-    subject: str,
-    email_body: str,
-    attachment_path: Optional[str] = None,
-    cc: Optional[list[str]] = None,
-    bcc: Optional[list[str]] = None,
-    prod_only: bool = True,
-) -> bool:
-    assert contacts and email_body
-    if type(contacts) is str:
-        contacts = [contacts]
-    preview = dedent(
-        f"""
-            Contact: {", ".join(contacts)}
-            cc: {", ".join(cc) if cc else "None"}
-            bcc: {", ".join(bcc) if bcc else "None"}
-            Subject: {subject}
-            Message: {email_body}
-            {("Attachment path: " + attachment_path) if attachment_path else "None"}
-            """
-    ).strip()
-    contacts = list(set(contacts))
-    if prod_only:
-        host_str = HttpHook.get_connection("entity_api_connection").host
-        env = find_matching_endpoint(host_str) if host_str else ""
-        if env.lower() != "prod":
-            logging.info("Non-prod environment, fetching overrides from config.")
-            contacts = []
-            cc = None
-            bcc = None
-            if config_ext_recipients := get_config_value_int_recipients():
-                contacts = config_ext_recipients
-            if config_int_recipients := get_config_value_int_recipients():
-                logging.info(f"Internal recipients: {config_int_recipients}")
-            if not contacts:
-                logging.info("No contacts found in airflow_conf, not sending. Would have sent:")
-                logging.info(preview)
-                return False
-            else:
-                logging.info(
-                    f"Sending email to {config_ext_recipients}. Preview of real data below:"
-                )
-    if cc:
-        # If a contact is in both lists, remove them from cc
-        cc = list(set(cc) - set(contacts))
-    logging.info(preview)
-    airflow_send_email(
-        contacts,
-        subject,
-        email_body,
-        files=[attachment_path] if attachment_path else None,
-        cc=cc,
-        bcc=bcc,
-    )
-    return True
 
 
 if __name__ == "__main__":

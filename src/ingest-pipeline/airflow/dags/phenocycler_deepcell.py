@@ -4,6 +4,7 @@ import re
 from datetime import datetime, timedelta
 from pathlib import Path
 
+from extra_utils import build_tag_containers
 from hubmap_operators.common_operators import (
     CreateTmpDirOperator,
     LogInfoOperator,
@@ -36,7 +37,6 @@ from airflow.operators.bash import BashOperator
 from airflow.operators.empty import EmptyOperator
 from airflow.operators.python import BranchPythonOperator, PythonOperator
 
-from extra_utils import build_tag_containers
 
 default_args = {
     "owner": "hubmap",

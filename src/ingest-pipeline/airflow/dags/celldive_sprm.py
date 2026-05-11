@@ -6,8 +6,6 @@ from airflow.operators.bash import BashOperator
 from airflow.operators.empty import EmptyOperator
 from airflow.decorators import task
 from airflow.operators.python import BranchPythonOperator, PythonOperator
-from status_change.callbacks.failure_callback import FailureCallback
-
 
 import utils
 from utils import (
@@ -51,7 +49,7 @@ default_args = {
     "queue": get_queue_resource("celldive_sprm"),
     "executor_config": {"SlurmExecutor": {"output": "/home/codcc/airflow-logs/slurm/%x_%N_%j.out",
                                           "cpus-per-task": str(get_threads_resource("celldive_sprm")),}},
-    "on_failure_callback": FailureCallback(__name__, get_uuid_for_error),
+    "on_failure_callback": utils.create_dataset_state_error_callback(get_uuid_for_error),
 }
 
 with HMDAG(
