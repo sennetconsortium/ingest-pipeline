@@ -1,7 +1,4 @@
 import os
-
-from pprint import pprint
-
 from airflow.operators.python import PythonOperator
 from airflow.operators.trigger_dagrun import TriggerDagRunOperator
 from airflow.configuration import conf as airflow_conf
