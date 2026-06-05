@@ -34,17 +34,17 @@ from utils import (
     pythonop_set_dataset_state,
     find_matching_endpoint,
     HMDAG,
-    get_threads_resource,
     get_queue_resource,
     get_preserve_scratch_resource,
     get_soft_data_assaytype,
+    # get_threads_resource,
     get_local_vm,
 )
 
 from misc.tools.split_and_create import reorganize
 from status_change.status_manager import StatusChanger
-from misc.tools.scrub_fastqs import scrub_upload
-from extra_utils import SoftAssayClient
+# from misc.tools.scrub_fastqs import scrub_upload
+# from extra_utils import SoftAssayClient
 
 
 SCRUB_REQUIRED_ASSAY_TYPES = {

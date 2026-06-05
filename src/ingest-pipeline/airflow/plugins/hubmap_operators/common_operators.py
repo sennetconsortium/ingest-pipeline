@@ -49,17 +49,25 @@ class CleanupTmpDirOperator(BashOperator):
             trigger_rule = 'all_success'
         super().__init__(
             bash_command="""
-                tmp_dir="{{tmp_dir_path(run_id)}}" ; \
-                if [ -e "$tmp_dir/session.log" ] ; then \
-                  ds_dir="{{ti.xcom_pull(task_ids='send_create_dataset')}}" ; \
-                  cp "$tmp_dir/session.log" "$ds_dir"  && echo "copied session.log" ; \
-                fi ; \
-                echo rmscratch is $rmscratch ; \
-                if [ "$rmscratch" = true ] ; then \
-                  rm -r "$tmp_dir" ; \
-                else \
-                  echo "scratch directory was preserved" ; \
+            tmp_dir="{{tmp_dir_path(run_id)}}" ; \
+            if [ -e "$tmp_dir/session.log" ] ; then \
+              ds_dir="{{ti.xcom_pull(task_ids='send_create_dataset')}}" ; \
+              cp "$tmp_dir/session.log" "$ds_dir"  && echo "copied session.log" ; \
+            fi ; \
+            echo rmscratch is $rmscratch ; \
+            if [ "$rmscratch" = true ] ; then \
+                if [ -d "$tmp_dir" ] ; then \
+                    rm -r "$tmp_dir" ; \
                 fi
+            else \
+              if [ "$ds_dir" != "None" ]; then \
+                if [ -d "$tmp_dir" ] ; then \
+                    rm -r "$tmp_dir" ; \
+                fi
+              else \
+                echo "scratch directory was preserved" ; \
+              fi ; \
+            fi
             """,
             env={'rmscratch': '{{"true" if preserve_scratch is defined and not preserve_scratch else "false"}}'},
             trigger_rule=trigger_rule,

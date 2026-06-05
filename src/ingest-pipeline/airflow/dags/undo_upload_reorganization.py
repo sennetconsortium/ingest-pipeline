@@ -15,10 +15,11 @@ from utils import (
     pythonop_set_dataset_state,
     find_matching_endpoint,
     HMDAG,
+    get_local_vm,
     get_queue_resource,
     get_preserve_scratch_resource,
     _get_scratch_base_path,
-    encrypt_tok, get_local_vm,
+    encrypt_tok,
 )
 
 from misc.tools.survey import EntityFactory
