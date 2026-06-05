@@ -2,7 +2,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 from airflow.operators.bash import BashOperator
-from airflow.operators.dummy import DummyOperator
+from airflow.operators.empty import EmptyOperator
 from airflow.operators.python import BranchPythonOperator, PythonOperator
 from airflow.decorators import task
 
@@ -109,11 +109,11 @@ with HMDAG(
 
     prepare_cwl1 = prepare_cwl1_cmd()
 
-    prepare_cwl2 = DummyOperator(task_id="prepare_cwl2")
+    prepare_cwl2 = EmptyOperator(task_id="prepare_cwl2")
 
-    prepare_cwl3 = DummyOperator(task_id="prepare_cwl3")
+    prepare_cwl3 = EmptyOperator(task_id="prepare_cwl3")
 
-    prepare_cwl4 = DummyOperator(task_id="prepare_cwl4")
+    prepare_cwl4 = EmptyOperator(task_id="prepare_cwl4")
 
     def build_cwltool_cmd1(**kwargs):
         run_id = kwargs["run_id"]

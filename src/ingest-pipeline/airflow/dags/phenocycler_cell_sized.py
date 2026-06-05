@@ -5,8 +5,6 @@ from airflow import DAG
 from airflow.operators.bash import BashOperator
 from airflow.operators.empty import EmptyOperator
 from airflow.operators.python import PythonOperator, BranchPythonOperator
-from status_change.callbacks.failure_callback import FailureCallback
-
 
 from datetime import datetime, timedelta
 from typing import List

@@ -16,7 +16,6 @@ from hubmap_operators.common_operators import (
     JoinOperator,
     LogInfoOperator,
     MoveDataOperator,
-    SetDatasetProcessingOperator,
 )
 
 import utils
