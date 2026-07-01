@@ -16,26 +16,28 @@ function set_main_environment(){
   for ending in "${priority_list[@]}"; do
     file="$file_dir/$base_name$ending"
     if [ -f "$file" ]; then
-        echo "Selected file: $file"
-        source $file
-        repo_env="$HUBMAP_INSTANCE"
-        python_version="$HUBMAP_PYTHON_VERSION"
-        repo_dir="/opt/repositories/$(hostname -s)-$repo_env/ingest-pipeline"
-        break
+      echo "Selected file: $file"
+      source $file
+      repo_env="$HUBMAP_INSTANCE"
+      python_version="$HUBMAP_PYTHON_VERSION"
+      repo_dir="/opt/repositories/$(hostname -s)-$repo_env/ingest-pipeline"
+      break
     fi
 done
 }
 
-while getopts ":g:n" opt; do
-  case $opt in
-    g)
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -g)
       regenerate_env=true
+      shift
       ;;
-    n)
+    -n)
       dry_run=true
+      shift
       ;;
-    \?)
-      echo "Invalid option: -$OPTARG" >&2
+    -*)
+      echo "Invalid option: $1" >&2
       ;;
   esac
 done
@@ -45,19 +47,19 @@ set -x
 set_main_environment
 
 if [ -z "$repo_env" ]; then
-    exit "The environment variable HUBMAP_INSTANCE is not set."
+  exit "The environment variable HUBMAP_INSTANCE is not set."
 fi
 
-for machine in "${codcc_machines[@]}"; do
-       	if $dry_run ; then
-            rsync -av --exclude "src/ingest-pipeline/airflow/logs" --delete-after --dry-run $repo_dir/ $machine:$repo_dir
-        else
-       	    # Rsync repo to machine
-            rsync -a --exclude "src/ingest-pipeline/airflow/logs" --delete-after $repo_dir/ $machine:$repo_dir
-        fi
+for machine in "${hive_machines[@]}"; do
+  if $dry_run ; then
+    rsync -av --exclude "src/ingest-pipeline/airflow/logs" --delete-after --dry-run $repo_dir/ $machine:$repo_dir
+  else
+    # Rsync repo to machine
+    rsync -a --exclude "src/ingest-pipeline/airflow/logs" --delete-after $repo_dir/ $machine:$repo_dir
+  fi
 
-       	# If flag set, run the conda environment regenerations
-        if $regenerate_env ; then
-                ssh $machine "/usr/local/bin/update_moonshot.sh $repo_dir $repo_env $python_version"
-        fi
+  # If flag set, run the conda environment regenerations
+  if $regenerate_env ; then
+          ssh $machine "/usr/local/bin/update_moonshot.sh $repo_dir $repo_env $python_version"
+  fi
 done
