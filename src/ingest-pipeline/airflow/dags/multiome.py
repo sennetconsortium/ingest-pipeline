@@ -156,18 +156,6 @@ def generate_multiome_dag(params: MultiomeSequencingDagParameters) -> DAG:
             else:
                 source_type = unique_source_types.pop().lower()
 
-            barcode_txt_files = [str(data_dir / Path("raw/barcodes.txt")) for data_dir in data_dirs if (data_dir / Path("raw/barcodes.txt")).exists()]
-
-            if barcode_txt_files:
-                if (count := len(barcode_txt_files)) != 1:
-                    raise ValueError(f"Expected 1 barcode txt file, found {count}")
-                input_parameters.append(
-                    {
-                        "parameter_name": "--rna_barcode_file",
-                        "value": barcode_txt_files[0],
-                    }
-                )
-
             cwl_params = [
                 {"parameter_name": "--parallel", "value": ""},
             ]
@@ -196,6 +184,18 @@ def generate_multiome_dag(params: MultiomeSequencingDagParameters) -> DAG:
                     {
                         "parameter_name": "--atac_metadata_file",
                         "value": str(atac_metadata_files[0]),
+                    }
+                )
+
+            barcode_txt_files = [str(data_dir / Path("raw/barcodes.txt")) for data_dir in data_dirs if (data_dir / Path("raw/barcodes.txt")).exists()]
+
+            if barcode_txt_files:
+                if (count := len(barcode_txt_files)) != 1:
+                    raise ValueError(f"Expected 1 barcode txt file, found {count}")
+                input_parameters.append(
+                    {
+                        "parameter_name": "--rna_barcode_file",
+                        "value": barcode_txt_files[0],
                     }
                 )
 
