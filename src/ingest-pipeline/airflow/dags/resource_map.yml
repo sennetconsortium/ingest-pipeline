@@ -12,12 +12,22 @@ resource_map:
       - 'task_re': '.*'
         'queue': 'APPS'
         'threads': 6
-  - 'dag_re': 'visium*'
+  - 'dag_re': 'visium_no_probes'
     'preserve_scratch': true
-    'lanes': 1
+    'lanes': 4
     'tasks':
       - 'task_re': '.*cwl.*|.*exec|.*cmd.*|.*ui.*'
         'queue': 'COMPUTE'
+        'threads': 6
+      - 'task_re': '.*'
+        'queue': 'APPS'
+        'threads': 6
+  - 'dag_re': 'visium_with_probes'
+    'preserve_scratch': true
+    'lanes': 2
+    'tasks':
+      - 'task_re': '.*cwl.*|.*exec|.*cmd.*|.*ui.*'
+        'queue': 'BIGGER'
         'threads': 6
       - 'task_re': '.*'
         'queue': 'APPS'
@@ -86,7 +96,7 @@ resource_map:
     'lanes': 1
     'tasks':
       - 'task_re': '(.*(?:cwl))(?!(?:segmentation)).*|.*cmd.*'
-        'queue': 'BIG'
+        'queue': 'BIGGER'
         'threads': 6
       - 'task_re': '.*'
         'queue': 'APPS'
@@ -165,7 +175,7 @@ resource_map:
       - 'task_re': '.*'
         'queue': 'APPS'
         'threads': 6
-  - 'dag_re': '.*multiome'
+  - 'dag_re': 'multiome.*'
     'preserve_scratch': true
     'lanes': 1
     'tasks':
