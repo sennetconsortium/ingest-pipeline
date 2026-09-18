@@ -238,7 +238,7 @@ with HMDAG(
         provide_context=True,
         op_kwargs={
             "next_op": "split_stage_2",
-            "bail_op": "set_dataset_error",
+            "bail_op": "join_to_error",
             "test_op": "split_stage_1",
         },
     )
@@ -306,7 +306,7 @@ with HMDAG(
         provide_context=True,
         op_kwargs={
             "next_op": "run_md_extract",
-            "bail_op": "set_dataset_error",
+            "bail_op": "join_to_error",
             "test_op": "split_stage_2",
             "test_key": "split_stage_2",
         },
@@ -350,8 +350,58 @@ with HMDAG(
         },
     )
 
+    t_maybe_keep_md1 = BranchPythonOperator(
+        task_id="maybe_keep_md1",
+        python_callable=pythonop_maybe_keep,
+        provide_context=True,
+        op_kwargs={
+            "next_op": "md_consistency_tests",
+            "bail_op": "set_datasets_error_md",
+            "test_op": "run_md_extract",
+        },
+    )
+
+    def set_datasets_error_md(**kwargs):
+        child_uuid_list = (
+            kwargs["ti"].xcom_pull(task_ids="split_stage_2", key="child_uuid_list") or []
+        )
+        auth_tok = get_auth_tok(**kwargs)
+        run_id = kwargs.get("run_id")
+        for uuid in child_uuid_list:
+            StatusChanger(
+                uuid,
+                auth_tok,
+                messages={
+                    "run_id": run_id,
+                    "error_dict": "Metadata parsing failed. Cannot continue reorganization"
+                },
+                status="Error",
+            ).update()
+
+    t_set_datasets_error_md = PythonOperator(
+        task_id="set_datasets_error_md",
+        python_callable=set_datasets_error_md,
+        provide_context=True,
+        trigger_rule="one_success",
+    )
+
     def xcom_consistency_puller(**kwargs):
         return kwargs["ti"].xcom_pull(task_ids="split_stage_2", key="child_uuid_list")
+
+    @task(task_id="permission_resetting")
+    def permission_resetting(**kwargs):
+        return_error = []
+        entity_host = HttpHook.get_connection("entity_api_connection").host
+        entity_factory = EntityFactory(
+            get_auth_tok(**kwargs), instance=find_matching_endpoint(entity_host)
+        )
+        for uuid in kwargs["ti"].xcom_pull(task_ids="split_stage_2", key="child_uuid_list"):
+            return_error.append(process_one_uuid(uuid, entity_factory))
+        if False in return_error:
+            return 1
+        return 0
+
+    t_reset_permissions = permission_resetting()
 
     t_md_consistency_tests = PythonOperator(
         task_id="md_consistency_tests",
@@ -360,6 +410,17 @@ with HMDAG(
         op_kwargs={
             "metadata_fname": "rslt.yml",
             "uuid_list": xcom_consistency_puller,
+        },
+    )
+
+    t_maybe_keep_md2 = BranchPythonOperator(
+        task_id="maybe_keep_md2",
+        python_callable=pythonop_maybe_keep,
+        provide_context=True,
+        op_kwargs={
+            "next_op": "permission_resetting",
+            "bail_op": "set_datasets_error_md",
+            "test_op": "md_consistency_tests",
         },
     )
 
@@ -407,12 +468,14 @@ with HMDAG(
         task_id="send_status_msg",
         python_callable=wrapped_send_status_msg,
         provide_context=True,
-        trigger_rule="all_done",
+        trigger_rule="all_success",
     )
 
     t_log_info = LogInfoOperator(task_id="log_info")
 
     t_join = JoinOperator(task_id="join")
+
+    t_join_to_error = JoinOperator(task_id="join_to_error")
 
     def flex_maybe_multiassay_epic_spawn(**kwargs):
         """
@@ -472,7 +535,7 @@ with HMDAG(
         task_id="set_dataset_error",
         python_callable=pythonop_set_dataset_state,
         provide_context=True,
-        trigger_rule="all_done",
+        trigger_rule="one_success",
         op_kwargs={
             "dataset_uuid_callable": _get_upload_uuid,
             "ds_state": "Error",
@@ -491,8 +554,10 @@ with HMDAG(
         >> t_split_stage_2
         >> t_maybe_keep_2
         >> t_run_md_extract
+        >> t_maybe_keep_md1
         >> t_md_consistency_tests
-
+        >> t_maybe_keep_md2
+        >> t_reset_permissions
         >> t_send_status
         >> t_join
         >> t_preserve_info
@@ -501,6 +566,20 @@ with HMDAG(
     )
 
     # t_maybe_keep_scrub >> t_set_dataset_error
-    t_maybe_keep_1 >> t_set_dataset_error
-    t_maybe_keep_2 >> t_set_dataset_error
+    t_maybe_keep_1 >> t_join_to_error
+    t_maybe_keep_2 >> t_join_to_error
+
+    (
+            t_maybe_keep_md1
+            >> t_set_datasets_error_md
+            >> t_set_dataset_error
+
+    )
+    (
+            t_maybe_keep_md2
+            >> t_set_datasets_error_md
+            >> t_set_dataset_error
+    )
+
+    t_join_to_error >> t_set_dataset_error
     t_set_dataset_error >> t_join
