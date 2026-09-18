@@ -418,7 +418,7 @@ with HMDAG(
         python_callable=pythonop_maybe_keep,
         provide_context=True,
         op_kwargs={
-            "next_op": "permission_resetting",
+            "next_op": "send_status_msg",
             "bail_op": "set_datasets_error_md",
             "test_op": "md_consistency_tests",
         },
