@@ -43,6 +43,7 @@ from utils import (
 
 from misc.tools.split_and_create import reorganize
 from status_change.status_manager import StatusChanger
+# from misc.tools.scrub_fastqs import scrub_upload
 # from extra_utils import SoftAssayClient
 
 
@@ -343,20 +344,20 @@ with HMDAG(
     def xcom_consistency_puller(**kwargs):
         return kwargs["ti"].xcom_pull(task_ids="split_stage_2", key="child_uuid_list")
 
-    @task(task_id="permission_resetting")
-    def permission_resetting(**kwargs):
-        return_error = []
-        entity_host = HttpHook.get_connection("entity_api_connection").host
-        entity_factory = EntityFactory(
-            get_auth_tok(**kwargs), instance=find_matching_endpoint(entity_host)
-        )
-        for uuid in kwargs["ti"].xcom_pull(task_ids="split_stage_2", key="child_uuid_list"):
-            return_error.append(process_one_uuid(uuid, entity_factory))
-        if False in return_error:
-            return 1
-        return 0
-
-    t_reset_permissions = permission_resetting()
+    # @task(task_id="permission_resetting")
+    # def permission_resetting(**kwargs):
+    #     return_error = []
+    #     entity_host = HttpHook.get_connection("entity_api_connection").host
+    #     entity_factory = EntityFactory(
+    #         get_auth_tok(**kwargs), instance=find_matching_endpoint(entity_host)
+    #     )
+    #     for uuid in kwargs["ti"].xcom_pull(task_ids="split_stage_2", key="child_uuid_list"):
+    #         return_error.append(process_one_uuid(uuid, entity_factory))
+    #     if False in return_error:
+    #         return 1
+    #     return 0
+    #
+    # t_reset_permissions = permission_resetting()
 
     t_md_consistency_tests = PythonOperator(
         task_id="md_consistency_tests",

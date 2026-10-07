@@ -1,3 +1,5 @@
+import os
+
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -33,6 +35,7 @@ from utils import (
     get_threads_resource,
     get_preserve_scratch_resource,
     get_cwl_cmd_from_workflows,
+    get_local_vm,
 )
 
 from extra_utils import build_tag_containers
