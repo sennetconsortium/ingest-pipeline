@@ -273,14 +273,14 @@ def find_pipeline_manifests(cwl_files: list[Path] | list[dict] | str) -> list[Pa
 
 
 def get_cwl_cmd_from_workflows(
-        workflows: list[dict],
-        workflow_index: int,
-        input_param_vals: list,
-        tmp_dir: Path,
-        ti,
-        cwl_param_vals: list[dict] | None = None,
-        crate_manager: CrateManager | None = None,
-        session = None,
+    workflows: list[dict],
+    workflow_index: int,
+    input_param_vals: list,
+    tmp_dir: Path,
+    ti,
+    cwl_param_vals: list[dict] | None = None,
+    crate_manager: CrateManager | None = None,
+    session=None,
 ) -> list:
     """
     :param workflows: Iterable of workflow dictionaries
@@ -316,8 +316,7 @@ def get_cwl_cmd_from_workflows(
 
     # Add the provenance argument for this workflow, if any
     if crate_manager:
-        assert session is not None, ("A valid session is required"
-                                     " when using rocrates")
+        assert session is not None, "A valid session is required" " when using rocrates"
         command += crate_manager.get_args(tmp_dir, ti, session)
 
     command.append(Path(workflow["workflow_path"]))
@@ -374,7 +373,7 @@ def build_dataset_name(dag_id: str, pipeline_str: str, **kwargs) -> str:
 def get_parent_dataset_uuids_list(**kwargs) -> list[str]:
     parent_uuid_list = kwargs["dag_run"].conf["parent_submission_id"]
     azimuth_uuid_list = None
-    if kwargs["dag"].dag_id == "azimuth_annotations":
+    if kwargs["dag"].dag_id in ["azimuth_annotations", "sprm_spatial_data"]:
         azimuth_uuid_list = pythonop_get_dataset_state(
             dataset_uuid_callable=lambda **_: parent_uuid_list[0], **kwargs
         ).get("parent_dataset_uuid_list")
@@ -1436,7 +1435,16 @@ def get_cwltool_base_cmd(tmpdir: Path) -> list[str | Path]:
     ]
 
 
-def build_provenance_function(cwl_workflows: Callable[..., list[dict]]) -> Callable[..., list]:
+def build_provenance_function(
+    cwl_workflows: Callable[..., list[dict]],
+    origin_keywords: tuple[str, ...] | None = ("salmon", "multiome"),
+) -> Callable[..., list]:
+    """
+    :param origin_keywords: only prior-revision provenance entries whose "origin"
+        contains one of these keywords are kept. Pass None to keep the entire
+        prior-revision provenance list, in order, ahead of the new one.
+    """
+
     def build_provenance(**kwargs) -> list:
         # Get the previous revisions metadata
         dataset_uuid = get_previous_revision_uuid(**kwargs)
@@ -1454,13 +1462,17 @@ def build_provenance_function(cwl_workflows: Callable[..., list[dict]]) -> Calla
             else []
         )
 
-        new_dag_provenance.extend(get_git_provenance_list(*cwl_workflows(**kwargs)))
+        new_dag_provenance.extend(get_git_provenance_list(cwl_workflows(**kwargs)))
 
-        # Look through the previous revision for the pipeline invocations
-        for data in ds_rslt["ingest_metadata"]["dag_provenance_list"]:
-            if "salmon" in data["origin"] or "multiome" in data["origin"]:
-                new_dag_provenance.insert(0, data)
-        kwargs["dag_run"].conf["dag_provenance_list"] = new_dag_provenance
+        # Prepend the previous revision's pipeline invocations, in order
+        prev_provenance = ds_rslt["ingest_metadata"]["dag_provenance_list"]
+        if origin_keywords is not None:
+            prev_provenance = [
+                data
+                for data in prev_provenance
+                if any(kw in data["origin"] for kw in origin_keywords)
+            ]
+        kwargs["dag_run"].conf["dag_provenance_list"] = prev_provenance + new_dag_provenance
         return kwargs["dag_run"].conf["dag_provenance_list"]
 
     return build_provenance
@@ -1644,14 +1656,23 @@ def make_send_status_msg_function(
                         if __is_true(val=v):
                             contacts.append(contrib)
 
-            if (segmentation_metadata := gather_segmentation_metadata(**kwargs).get("segmentation_metadata")) is not None:
+                if (genome_build := md.get("metadata", {}).pop("genome_build", {})) is not None:
+                    md["genome_build"] = genome_build
+
+            if (
+                segmentation_metadata := gather_segmentation_metadata(**kwargs).get(
+                    "segmentation_metadata"
+                )
+            ) is not None:
                 md["segmentation_metadata"] = segmentation_metadata
 
             if not ds_rslt:
                 status = "QA"
             else:
                 status = ds_rslt.get("status", "QA")
-                if status in ["Processing", "New", "Invalid"]:
+                # With the exception of the JSON schema check, send_status_msg will not
+                # return an Error status
+                if status in ["Processing", "New", "Invalid", "Error"]:
                     status = (
                         "Submitted"
                         if kwargs["dag"].dag_id
@@ -1982,7 +2003,12 @@ def gather_calculated_metadata(**kwargs):
     data_dir = kwargs["ti"].xcom_pull(task_ids="send_create_dataset")
     file_path = f"{data_dir}/calculated_metadata.json"
     output_metadata = json.load(open(file_path)) if os.path.exists(file_path) else {}
-    return {"calculated_metadata": output_metadata}
+    genome_build = f"{data_dir}/genome_build.json"
+    output_build = json.load(open(genome_build)) if os.path.exists(genome_build) else {}
+    return {
+        "calculated_metadata": output_metadata,
+        "genome_build": output_build,
+    }
 
 
 def gather_segmentation_metadata(**kwargs):
